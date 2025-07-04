@@ -1,0 +1,55 @@
+{
+  "name": "hugo-syndicate",
+  "version": "0.1.0-alpha.1",
+  "description": "A content syndication tool for Hugo static sites. Currently supports dev.to with plans for Medium, Hashnode, and more. Works with Hugo source files, not published sites.",
+  "main": "hugo-syndicate.js",
+  "bin": {
+    "hugo-syndicate": "./hugo-syndicate.js"
+  },
+  "scripts": {
+    "sync": "node hugo-syndicate.js",
+    "sync:all": "FORCE_SYNC_ALL=true node hugo-syndicate.js",
+    "sync:debug": "DEBUG_LEVEL=3 node hugo-syndicate.js",
+    "sync:verbose": "DEBUG_LEVEL=4 node hugo-syndicate.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "hugo",
+    "syndication",
+    "crosspost",
+    "blog",
+    "dev.to",
+    "medium",
+    "hashnode",
+    "automation",
+    "markdown",
+    "static-site",
+    "shortcodes",
+    "cms",
+    "publishing"
+  ],
+  "author": "px4n",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "front-matter": "^4.0.2",
+    "@iarna/toml": "^2.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/px4n/hugo-syndicate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/px4n/hugo-syndicate/issues"
+  },
+  "homepage": "https://github.com/px4n/hugo-syndicate#readme"
+}

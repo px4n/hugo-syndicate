@@ -1,0 +1,66 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="modernBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="iconGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.95" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0.8" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Modern rounded square background -->
+  <rect x="20" y="20" width="160" height="160" rx="32" ry="32" fill="url(#modernBg)" filter="url(#glow)"/>
+  
+  <!-- Central hub icon -->
+  <g transform="translate(100, 100)">
+    <!-- Modern H symbol -->
+    <g fill="url(#iconGradient)">
+      <rect x="-28" y="-24" width="6" height="48" rx="3"/>
+      <rect x="22" y="-24" width="6" height="48" rx="3"/>
+      <rect x="-22" y="-3" width="44" height="6" rx="3"/>
+    </g>
+    
+    <!-- Syndication network -->
+    <g stroke="rgba(255,255,255,0.7)" stroke-width="2" fill="none" stroke-linecap="round">
+      <!-- Connection lines -->
+      <path d="M 35 -20 Q 45 -25 50 -15"/>
+      <path d="M 35 0 L 50 0"/>
+      <path d="M 35 20 Q 45 25 50 15"/>
+      <path d="M -35 -20 Q -45 -25 -50 -15"/>
+      <path d="M -35 0 L -50 0"/>
+      <path d="M -35 20 Q -45 25 -50 15"/>
+    </g>
+    
+    <!-- Platform nodes -->
+    <g fill="rgba(255,255,255,0.9)">
+      <circle cx="52" cy="-15" r="6"/>
+      <circle cx="52" cy="0" r="6"/>
+      <circle cx="52" cy="15" r="6"/>
+      <circle cx="-52" cy="-15" r="6"/>
+      <circle cx="-52" cy="0" r="6"/>
+      <circle cx="-52" cy="15" r="6"/>
+    </g>
+    
+    <!-- Platform indicators -->
+    <g fill="rgba(102,126,234,0.8)" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" dominant-baseline="central">
+      <text x="52" y="-15">D</text>
+      <text x="52" y="0">M</text>
+      <text x="52" y="15">H</text>
+      <text x="-52" y="-15">G</text>
+      <text x="-52" y="0">W</text>
+      <text x="-52" y="15">+</text>
+    </g>
+  </g>
+  
+  <!-- Subtle accent -->
+  <circle cx="100" cy="100" r="78" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+</svg>

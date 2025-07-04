@@ -1,0 +1,337 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  validate-version:
+    name: Validate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      npm_version: ${{ steps.get_npm_version.outputs.npm_version }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tag version: $VERSION"
+
+      - name: Get version from package.json
+        id: get_npm_version
+        run: |
+          NPM_VERSION=$(node -p "require('./package.json').version")
+          echo "npm_version=$NPM_VERSION" >> $GITHUB_OUTPUT
+          echo "Package.json version: $NPM_VERSION"
+
+      - name: Verify versions match
+        run: |
+          TAG_VERSION="${{ steps.get_version.outputs.version }}"
+          PKG_VERSION="${{ steps.get_npm_version.outputs.npm_version }}"
+          
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "ERROR: Tag version (v$TAG_VERSION) does not match package.json version ($PKG_VERSION)"
+            echo "Please ensure package.json version matches the tag version"
+            exit 1
+          fi
+          
+          echo "✓ Versions match: $TAG_VERSION"
+
+      - name: Check if version exists on NPM
+        run: |
+          VERSION="${{ steps.get_npm_version.outputs.npm_version }}"
+          if npm view hugo-syndicate@$VERSION > /dev/null 2>&1; then
+            echo "ERROR: Version $VERSION already exists on NPM"
+            echo "Please increment the version number"
+            exit 1
+          fi
+          echo "✓ Version $VERSION is available on NPM"
+
+  quality-checks:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    needs: validate-version
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Run coverage and check threshold
+        run: |
+          npm run test:coverage
+          
+          # Check coverage thresholds (adjust as needed)
+          COVERAGE=$(npx nyc report --reporter=text-summary | grep 'Lines' | awk '{print $3}' | sed 's/%//')
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "ERROR: Test coverage ($COVERAGE%) is below 80% threshold"
+            exit 1
+          fi
+          echo "✓ Test coverage: $COVERAGE%"
+
+      - name: Check for security vulnerabilities
+        run: npm audit --production
+
+      - name: Validate package files
+        run: |
+          # Check that all required files exist
+          for file in README.md LICENSE hugo-syndicate.js package.json .gitignore; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file $file is missing"
+              exit 1
+            fi
+          done
+          echo "✓ All required files present"
+
+      - name: Test CLI installation
+        run: |
+          npm pack
+          npm install -g ./hugo-syndicate-*.tgz
+          
+          # Test CLI works
+          if ! command -v hugo-syndicate &> /dev/null; then
+            echo "ERROR: CLI command not found after installation"
+            exit 1
+          fi
+          
+          npm uninstall -g hugo-syndicate
+          echo "✓ CLI installation test passed"
+
+  test-matrix:
+    name: Test Node.js ${{ matrix.node-version }}
+    runs-on: ${{ matrix.os }}
+    needs: validate-version
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [16, 18, 20]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  publish:
+    name: Publish to NPM
+    runs-on: ubuntu-latest
+    needs: [validate-version, quality-checks, test-matrix]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and validate package
+        run: |
+          # Create package
+          npm pack
+          
+          # Check package size
+          PACKAGE_SIZE=$(stat -f%z hugo-syndicate-*.tgz 2>/dev/null || stat -c%s hugo-syndicate-*.tgz)
+          MAX_SIZE=$((5 * 1024 * 1024))  # 5MB limit
+          
+          if [ "$PACKAGE_SIZE" -gt "$MAX_SIZE" ]; then
+            echo "ERROR: Package size ($PACKAGE_SIZE bytes) exceeds 5MB limit"
+            exit 1
+          fi
+          
+          echo "✓ Package size: $PACKAGE_SIZE bytes"
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify NPM publication
+        run: |
+          VERSION="${{ needs.validate-version.outputs.npm_version }}"
+          sleep 30  # Give NPM time to index
+          
+          if ! npm view hugo-syndicate@$VERSION > /dev/null 2>&1; then
+            echo "ERROR: Package not found on NPM after publication"
+            exit 1
+          fi
+          
+          echo "✓ Package successfully published to NPM"
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-version, publish]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get all history for changelog
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          
+          # Get commits since last tag
+          if git describe --tags --abbrev=0 HEAD^ 2>/dev/null; then
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
+            COMMITS=$(git log --pretty=format:"%s|%h" $LAST_TAG..HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"%s|%h" HEAD)
+          fi
+          
+          # Parse commits by type
+          FEATURES=""
+          FIXES=""
+          DOCS=""
+          BREAKING=""
+          OTHER=""
+          
+          while IFS= read -r commit; do
+            if [ -z "$commit" ]; then continue; fi
+            
+            MSG=$(echo "$commit" | cut -d'|' -f1)
+            HASH=$(echo "$commit" | cut -d'|' -f2)
+            
+            case "$MSG" in
+              feat:*|feature:*)
+                FEAT_MSG=$(echo "$MSG" | sed 's/^feat[ure]*: *//')
+                FEATURES="${FEATURES}- ${FEAT_MSG} (${HASH})\n"
+                ;;
+              fix:*|bugfix:*)
+                FIX_MSG=$(echo "$MSG" | sed 's/^[bug]*fix: *//')
+                FIXES="${FIXES}- ${FIX_MSG} (${HASH})\n"
+                ;;
+              docs:*|doc:*)
+                DOC_MSG=$(echo "$MSG" | sed 's/^doc[s]*: *//')
+                DOCS="${DOCS}- ${DOC_MSG} (${HASH})\n"
+                ;;
+              "BREAKING CHANGE:"*|breaking:*)
+                BREAK_MSG=$(echo "$MSG" | sed 's/^BREAKING CHANGE: *//' | sed 's/^breaking: *//')
+                BREAKING="${BREAKING}- ${BREAK_MSG} (${HASH})\n"
+                ;;
+              chore:*|refactor:*|perf:*|test:*|style:*|build:*|ci:*)
+                # Skip maintenance commits in release notes
+                ;;
+              *)
+                OTHER="${OTHER}- ${MSG} (${HASH})\n"
+                ;;
+            esac
+          done <<< "$COMMITS"
+          
+          # Build changelog
+          CHANGELOG="## Release v$VERSION\n\n"
+          
+          if [ -n "$BREAKING" ]; then
+            CHANGELOG="${CHANGELOG}### Breaking Changes\n${BREAKING}\n"
+          fi
+          
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### Features\n${FEATURES}\n"
+          fi
+          
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### Bug Fixes\n${FIXES}\n"
+          fi
+          
+          if [ -n "$DOCS" ]; then
+            CHANGELOG="${CHANGELOG}### Documentation\n${DOCS}\n"
+          fi
+          
+          if [ -n "$OTHER" ]; then
+            CHANGELOG="${CHANGELOG}### Other Changes\n${OTHER}\n"
+          fi
+          
+          CHANGELOG="${CHANGELOG}### Installation\n\n\`\`\`bash\nnpm install -g hugo-syndicate@$VERSION\n\`\`\`\n\n"
+          
+          if [ -n "$LAST_TAG" ]; then
+            CHANGELOG="${CHANGELOG}**Full Changelog**: https://github.com/px4n/hugo-syndicate/compare/$LAST_TAG...v$VERSION"
+          fi
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Hugo Syndicate v${{ needs.validate-version.outputs.version }}
+          draft: false
+          prerelease: false
+          body: ${{ steps.changelog.outputs.changelog }}
+
+      - name: Upload release assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./hugo-syndicate-${{ needs.validate-version.outputs.npm_version }}.tgz
+          asset_name: hugo-syndicate-${{ needs.validate-version.outputs.npm_version }}.tgz
+          asset_content_type: application/gzip
+
+  post-release:
+    name: Post-Release Verification
+    runs-on: ubuntu-latest
+    needs: [validate-version, create-release]
+    
+    steps:
+      - name: Verify NPM installation works
+        run: |
+          VERSION="${{ needs.validate-version.outputs.npm_version }}"
+          
+          # Install from NPM
+          npm install -g hugo-syndicate@$VERSION
+          
+          # Verify it works
+          hugo-syndicate --help 2>&1 | grep -q "DEVTO_API_KEY" || {
+            echo "ERROR: Installed package doesn't work correctly"
+            exit 1
+          }
+          
+          echo "✓ NPM package installation verified"
+
+      - name: Create success notification
+        run: |
+          echo "Hugo Syndicate v${{ needs.validate-version.outputs.version }} released successfully"
+          echo "NPM: https://www.npmjs.com/package/hugo-syndicate"
+          echo "GitHub: https://github.com/px4n/hugo-syndicate/releases/tag/v${{ needs.validate-version.outputs.version }}"

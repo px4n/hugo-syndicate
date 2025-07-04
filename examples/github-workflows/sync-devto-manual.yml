@@ -1,0 +1,81 @@
+name: Manual Hugo Syndicate Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_mode:
+        description: "Sync mode"
+        required: true
+        default: "changed"
+        type: choice
+        options:
+          - "changed"
+          - "all"
+          - "cleanup"
+      debug_level:
+        description: "Debug level (0-4)"
+        required: false
+        default: "2"
+        type: string
+      auto_delete:
+        description: "Auto-delete orphaned articles"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync changed files only
+        if: github.event.inputs.sync_mode == 'changed'
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          HUGO_BASE_URL: ${{ vars.HUGO_BASE_URL }}
+          DEBUG_LEVEL: ${{ github.event.inputs.debug_level }}
+          AUTO_DELETE_DEVTO: ${{ github.event.inputs.auto_delete }}
+        run: npm run sync
+
+      - name: Sync all posts
+        if: github.event.inputs.sync_mode == 'all'
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          HUGO_BASE_URL: ${{ vars.HUGO_BASE_URL }}
+          DEBUG_LEVEL: ${{ github.event.inputs.debug_level }}
+          FORCE_SYNC_ALL: "true"
+          AUTO_DELETE_DEVTO: ${{ github.event.inputs.auto_delete }}
+        run: npm run sync
+
+      - name: Cleanup orphaned articles
+        if: github.event.inputs.sync_mode == 'cleanup'
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          HUGO_BASE_URL: ${{ vars.HUGO_BASE_URL }}
+          DEBUG_LEVEL: ${{ github.event.inputs.debug_level }}
+          FORCE_SYNC_ALL: "true"
+          AUTO_DELETE_DEVTO: "true"
+        run: npm run sync
+
+      - name: Upload sync logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-sync-logs-${{ github.run_number }}
+          path: |
+            *.log
+            logs/
+          retention-days: 7
