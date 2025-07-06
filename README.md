@@ -5,7 +5,7 @@
 
 **Multi-provider content syndication for Hugo static sites**
 
-_Sync your blog posts to dev.to, Medium, Hashnode, and more_
+_Sync your hugo blog posts to dev.to, Medium, Hashnode, and more_
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js->=14.0.0-green.svg)](https://nodejs.org/)

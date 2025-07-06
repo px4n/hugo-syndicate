@@ -1,0 +1,47 @@
+{
+  "action": "opened",
+  "number": 42,
+  "pull_request": {
+    "id": 123456789,
+    "number": 42,
+    "state": "open",
+    "title": "feat: add support for Medium platform",
+    "body": "This PR adds initial support for Medium syndication",
+    "created_at": "2025-01-04T10:00:00Z",
+    "updated_at": "2025-01-04T10:00:00Z",
+    "head": {
+      "ref": "feature/medium-support",
+      "sha": "1234567890abcdef1234567890abcdef12345678",
+      "repo": {
+        "name": "hugo-syndicate",
+        "full_name": "px4n/hugo-syndicate",
+        "owner": {
+          "login": "px4n"
+        }
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "abcdef1234567890abcdef1234567890abcdef12",
+      "repo": {
+        "name": "hugo-syndicate",
+        "full_name": "px4n/hugo-syndicate",
+        "owner": {
+          "login": "px4n"
+        }
+      }
+    }
+  },
+  "repository": {
+    "name": "hugo-syndicate",
+    "full_name": "px4n/hugo-syndicate",
+    "owner": {
+      "login": "px4n",
+      "type": "User"
+    }
+  },
+  "sender": {
+    "login": "px4n",
+    "type": "User"
+  }
+}

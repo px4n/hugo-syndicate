@@ -1,5 +1,9 @@
 name: Version Bump
 
+permissions:
+  contents: write
+  pull-requests: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -29,7 +33,7 @@ jobs:
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +55,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check package.json exists
+        run: |
+          if [ ! -f package.json ]; then
+            echo "Error: package.json not found"
+            exit 1
+          fi
+
       - name: Run tests before bump
         run: npm test
 
@@ -59,10 +70,18 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.custom_version }}" ]; then
             NEW_VERSION="${{ github.event.inputs.custom_version }}"
+
+            # Validate custom version format
+            if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$'; then
+              echo "Error: Invalid version format: $NEW_VERSION"
+              echo "Expected format: X.Y.Z or X.Y.Z-prerelease"
+              exit 1
+            fi
+
             echo "Using custom version: $NEW_VERSION"
           else
             VERSION_TYPE="${{ github.event.inputs.version_type }}"
-            
+
             if [ "$VERSION_TYPE" = "prerelease" ]; then
               PRERELEASE_TYPE="${{ github.event.inputs.prerelease_type }}"
               if [ -z "$PRERELEASE_TYPE" ]; then
@@ -73,24 +92,30 @@ jobs:
               NEW_VERSION=$(npm version $VERSION_TYPE --no-git-tag-version)
             fi
           fi
-          
+
           # Remove 'v' prefix if present
           NEW_VERSION=${NEW_VERSION#v}
+
+          # Check if version already exists as a tag
+          if git tag | grep -q "^v$NEW_VERSION$"; then
+            echo "Error: Version v$NEW_VERSION already exists as a tag"
+            exit 1
+          fi
+
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version will be: $NEW_VERSION"
 
       - name: Update version in files
         run: |
           VERSION="${{ steps.new_version.outputs.version }}"
-          
+
           # Update package.json (already done by npm version)
-          
+
           # Update README.md if it contains version references
           if grep -q "hugo-syndicate@[0-9]" README.md; then
-            sed -i.bak "s/hugo-syndicate@[0-9]\+\.[0-9]\+\.[0-9]\+[^ ]*/hugo-syndicate@$VERSION/g" README.md
-            rm README.md.bak
+            sed -i "s/hugo-syndicate@[0-9]\+\.[0-9]\+\.[0-9]\+[^ ]*/hugo-syndicate@$VERSION/g" README.md
           fi
-          
+
           # Update any other files that might contain version
           echo "Version updated to $VERSION"
 
@@ -99,25 +124,25 @@ jobs:
         run: |
           VERSION="${{ steps.new_version.outputs.version }}"
           DATE=$(date +%Y-%m-%d)
-          
+
           # Get commits since last tag
           if git describe --tags --abbrev=0 2>/dev/null; then
             LAST_TAG=$(git describe --tags --abbrev=0)
-            COMMITS=$(git log --pretty=format:"%s" $LAST_TAG..HEAD | grep -v -E "(chore|Version bump|Merge pull)")
+            COMMITS=$(git log --pretty=format:"%s" $LAST_TAG..HEAD | grep -v -E "(chore|Version bump|Merge pull)" || true)
           else
-            COMMITS=$(git log --pretty=format:"%s" HEAD | grep -v -E "(chore|Version bump|Merge pull)")
+            COMMITS=$(git log --pretty=format:"%s" HEAD | grep -v -E "(chore|Version bump|Merge pull)" || true)
           fi
-          
+
           # Parse commits by conventional type
           ADDED=""
           CHANGED=""
           FIXED=""
           REMOVED=""
           OTHER=""
-          
+
           while IFS= read -r commit; do
             if [ -z "$commit" ]; then continue; fi
-            
+
             case "$commit" in
               feat:*|feature:*|add:*)
                 MSG=$(echo "$commit" | sed 's/^[a-z]*: *//')
@@ -143,41 +168,41 @@ jobs:
                 ;;
             esac
           done <<< "$COMMITS"
-          
+
           # Build changelog entry
           CHANGELOG_ENTRY="## [$VERSION] - $DATE\n"
-          
+
           if [ -n "$ADDED" ]; then
             CHANGELOG_ENTRY="${CHANGELOG_ENTRY}\n### Added\n${ADDED}"
           fi
-          
+
           if [ -n "$CHANGED" ]; then
             CHANGELOG_ENTRY="${CHANGELOG_ENTRY}\n### Changed\n${CHANGED}"
           fi
-          
+
           if [ -n "$FIXED" ]; then
             CHANGELOG_ENTRY="${CHANGELOG_ENTRY}\n### Fixed\n${FIXED}"
           fi
-          
+
           if [ -n "$REMOVED" ]; then
             CHANGELOG_ENTRY="${CHANGELOG_ENTRY}\n### Removed\n${REMOVED}"
           fi
-          
+
           if [ -n "$OTHER" ] && [ -z "$ADDED$CHANGED$FIXED$REMOVED" ]; then
             CHANGELOG_ENTRY="${CHANGELOG_ENTRY}\n### Changed\n${OTHER}"
           fi
-          
+
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo -e "$CHANGELOG_ENTRY" >> $GITHUB_OUTPUT
+          printf "%b\n" "$CHANGELOG_ENTRY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Update CHANGELOG.md
         run: |
           VERSION="${{ steps.new_version.outputs.version }}"
-          
+
           # Create CHANGELOG.md if it doesn't exist
           if [ ! -f CHANGELOG.md ]; then
-            cat > CHANGELOG.md << 'EOF'
+            cat > CHANGELOG.md << 'CHANGELOG_EOF'
 # Changelog
 
 All notable changes to Hugo Syndicate will be documented in this file.
@@ -185,23 +210,23 @@ All notable changes to Hugo Syndicate will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-EOF
+CHANGELOG_EOF
           fi
-          
+
           # Add new entry after the header
           TEMP_FILE=$(mktemp)
-          
+
           # Extract header (first 6 lines)
           head -6 CHANGELOG.md > $TEMP_FILE
-          
+
           # Add new version entry
           echo "" >> $TEMP_FILE
-          echo -e "${{ steps.changelog.outputs.changelog }}" >> $TEMP_FILE
+          printf "%b\n" "${{ steps.changelog.outputs.changelog }}" >> $TEMP_FILE
           echo "" >> $TEMP_FILE
-          
+
           # Add the rest of the file
           tail -n +7 CHANGELOG.md >> $TEMP_FILE 2>/dev/null || true
-          
+
           # Replace the original file
           mv $TEMP_FILE CHANGELOG.md
 
@@ -214,18 +239,18 @@ EOF
           title: "Release: v${{ steps.new_version.outputs.version }}"
           body: |
             ## Version Bump to v${{ steps.new_version.outputs.version }}
-            
+
             This PR bumps the version to `${{ steps.new_version.outputs.version }}`.
-            
+
             ### Changelog
             ${{ steps.changelog.outputs.changelog }}
-            
+
             ### Checklist
             - [ ] Tests pass
             - [ ] Version updated in package.json
             - [ ] CHANGELOG.md updated
             - [ ] README.md version references updated (if applicable)
-            
+
             ### Next Steps
             1. Review and merge this PR
             2. Create and push a tag: `git tag v${{ steps.new_version.outputs.version }} && git push origin v${{ steps.new_version.outputs.version }}`

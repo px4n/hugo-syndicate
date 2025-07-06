@@ -1,0 +1,26 @@
+{
+  "ref": "refs/tags/v0.1.0-alpha.2",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "abcdef1234567890abcdef1234567890abcdef12",
+  "created": true,
+  "deleted": false,
+  "forced": false,
+  "base_ref": "refs/heads/main",
+  "repository": {
+    "name": "hugo-syndicate",
+    "full_name": "px4n/hugo-syndicate",
+    "owner": {
+      "login": "px4n",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "px4n",
+    "email": "test@example.com"
+  },
+  "sender": {
+    "login": "px4n",
+    "type": "User"
+  }
+}

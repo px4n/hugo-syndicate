@@ -1,6 +1,6 @@
 # Contributing to Hugo Syndicate
 
-Thank you for your interest in contributing to Hugo Syndicate! This guide will help you get started.
+Thank you for your interest in contributing to Hugo Syndicate. This guide will help you get started.
 
 ## Development Setup
 

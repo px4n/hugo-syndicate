@@ -1,0 +1,23 @@
+{
+  "action": "workflow_dispatch",
+  "inputs": {
+    "version_type": "patch",
+    "prerelease_type": "",
+    "custom_version": ""
+  },
+  "ref": "refs/heads/main",
+  "repository": {
+    "name": "hugo-syndicate",
+    "full_name": "px4n/hugo-syndicate",
+    "owner": {
+      "login": "px4n",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "sender": {
+    "login": "px4n",
+    "type": "User"
+  },
+  "workflow": ".github/workflows/version-bump.yml"
+}
