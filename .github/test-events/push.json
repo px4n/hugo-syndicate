@@ -1,0 +1,47 @@
+{
+  "ref": "refs/heads/feature/test-feature",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "1234567890abcdef1234567890abcdef12345678",
+  "repository": {
+    "name": "hugo-syndicate",
+    "full_name": "px4n/hugo-syndicate",
+    "owner": {
+      "login": "px4n",
+      "type": "User"
+    },
+    "default_branch": "main"
+  },
+  "pusher": {
+    "name": "px4n",
+    "email": "test@example.com"
+  },
+  "sender": {
+    "login": "px4n",
+    "type": "User"
+  },
+  "created": false,
+  "deleted": false,
+  "forced": false,
+  "base_ref": null,
+  "compare": "https://github.com/px4n/hugo-syndicate/compare/0000000000000000000000000000000000000000...1234567890abcdef1234567890abcdef12345678",
+  "commits": [
+    {
+      "id": "1234567890abcdef1234567890abcdef12345678",
+      "message": "feat: add new feature",
+      "timestamp": "2025-01-04T10:00:00Z",
+      "author": {
+        "name": "Test User",
+        "email": "test@example.com"
+      }
+    }
+  ],
+  "head_commit": {
+    "id": "1234567890abcdef1234567890abcdef12345678",
+    "message": "feat: add new feature",
+    "timestamp": "2025-01-04T10:00:00Z",
+    "author": {
+      "name": "Test User",
+      "email": "test@example.com"
+    }
+  }
+}

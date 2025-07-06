@@ -1,0 +1,8 @@
+# Default configuration for act
+-P ubuntu-latest=node:18-slim
+-P ubuntu-22.04=node:18-slim
+-P ubuntu-20.04=node:16-slim
+-P macos-latest=node:18-slim
+-P windows-latest=node:18-slim
+--container-architecture linux/amd64
+-b

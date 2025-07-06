@@ -168,6 +168,11 @@ web_modules/
 .env.production.local
 .env.local
 
+# act testing
+.secrets
+.env.local
+.act
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

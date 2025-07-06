@@ -12,7 +12,7 @@ jobs:
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       npm_version: ${{ steps.get_npm_version.outputs.npm_version }}
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,13 +35,13 @@ jobs:
         run: |
           TAG_VERSION="${{ steps.get_version.outputs.version }}"
           PKG_VERSION="${{ steps.get_npm_version.outputs.npm_version }}"
-          
+
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "ERROR: Tag version (v$TAG_VERSION) does not match package.json version ($PKG_VERSION)"
             echo "Please ensure package.json version matches the tag version"
             exit 1
           fi
-          
+
           echo "✓ Versions match: $TAG_VERSION"
 
       - name: Check if version exists on NPM
@@ -58,7 +58,7 @@ jobs:
     name: Quality Checks
     runs-on: ubuntu-latest
     needs: validate-version
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -78,7 +78,7 @@ jobs:
       - name: Run coverage and check threshold
         run: |
           npm run test:coverage
-          
+
           # Check coverage thresholds (adjust as needed)
           COVERAGE=$(npx nyc report --reporter=text-summary | grep 'Lines' | awk '{print $3}' | sed 's/%//')
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
@@ -105,13 +105,13 @@ jobs:
         run: |
           npm pack
           npm install -g ./hugo-syndicate-*.tgz
-          
+
           # Test CLI works
           if ! command -v hugo-syndicate &> /dev/null; then
             echo "ERROR: CLI command not found after installation"
             exit 1
           fi
-          
+
           npm uninstall -g hugo-syndicate
           echo "✓ CLI installation test passed"
 
@@ -123,7 +123,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: [16, 18, 20]
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -144,7 +144,7 @@ jobs:
     name: Publish to NPM
     runs-on: ubuntu-latest
     needs: [validate-version, quality-checks, test-matrix]
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,16 +163,16 @@ jobs:
         run: |
           # Create package
           npm pack
-          
+
           # Check package size
           PACKAGE_SIZE=$(stat -f%z hugo-syndicate-*.tgz 2>/dev/null || stat -c%s hugo-syndicate-*.tgz)
           MAX_SIZE=$((5 * 1024 * 1024))  # 5MB limit
-          
+
           if [ "$PACKAGE_SIZE" -gt "$MAX_SIZE" ]; then
             echo "ERROR: Package size ($PACKAGE_SIZE bytes) exceeds 5MB limit"
             exit 1
           fi
-          
+
           echo "✓ Package size: $PACKAGE_SIZE bytes"
 
       - name: Publish to NPM
@@ -184,30 +184,30 @@ jobs:
         run: |
           VERSION="${{ needs.validate-version.outputs.npm_version }}"
           sleep 30  # Give NPM time to index
-          
+
           if ! npm view hugo-syndicate@$VERSION > /dev/null 2>&1; then
             echo "ERROR: Package not found on NPM after publication"
             exit 1
           fi
-          
+
           echo "✓ Package successfully published to NPM"
 
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [validate-version, publish]
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Get all history for changelog
+          fetch-depth: 0 # Get all history for changelog
 
       - name: Generate changelog
         id: changelog
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"
-          
+
           # Get commits since last tag
           if git describe --tags --abbrev=0 HEAD^ 2>/dev/null; then
             LAST_TAG=$(git describe --tags --abbrev=0 HEAD^)
@@ -215,20 +215,20 @@ jobs:
           else
             COMMITS=$(git log --pretty=format:"%s|%h" HEAD)
           fi
-          
+
           # Parse commits by type
           FEATURES=""
           FIXES=""
           DOCS=""
           BREAKING=""
           OTHER=""
-          
+
           while IFS= read -r commit; do
             if [ -z "$commit" ]; then continue; fi
-            
+
             MSG=$(echo "$commit" | cut -d'|' -f1)
             HASH=$(echo "$commit" | cut -d'|' -f2)
-            
+
             case "$MSG" in
               feat:*|feature:*)
                 FEAT_MSG=$(echo "$MSG" | sed 's/^feat[ure]*: *//')
@@ -254,36 +254,36 @@ jobs:
                 ;;
             esac
           done <<< "$COMMITS"
-          
+
           # Build changelog
           CHANGELOG="## Release v$VERSION\n\n"
-          
+
           if [ -n "$BREAKING" ]; then
             CHANGELOG="${CHANGELOG}### Breaking Changes\n${BREAKING}\n"
           fi
-          
+
           if [ -n "$FEATURES" ]; then
             CHANGELOG="${CHANGELOG}### Features\n${FEATURES}\n"
           fi
-          
+
           if [ -n "$FIXES" ]; then
             CHANGELOG="${CHANGELOG}### Bug Fixes\n${FIXES}\n"
           fi
-          
+
           if [ -n "$DOCS" ]; then
             CHANGELOG="${CHANGELOG}### Documentation\n${DOCS}\n"
           fi
-          
+
           if [ -n "$OTHER" ]; then
             CHANGELOG="${CHANGELOG}### Other Changes\n${OTHER}\n"
           fi
-          
+
           CHANGELOG="${CHANGELOG}### Installation\n\n\`\`\`bash\nnpm install -g hugo-syndicate@$VERSION\n\`\`\`\n\n"
-          
+
           if [ -n "$LAST_TAG" ]; then
             CHANGELOG="${CHANGELOG}**Full Changelog**: https://github.com/px4n/hugo-syndicate/compare/$LAST_TAG...v$VERSION"
           fi
-          
+
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -313,21 +313,21 @@ jobs:
     name: Post-Release Verification
     runs-on: ubuntu-latest
     needs: [validate-version, create-release]
-    
+
     steps:
       - name: Verify NPM installation works
         run: |
           VERSION="${{ needs.validate-version.outputs.npm_version }}"
-          
+
           # Install from NPM
           npm install -g hugo-syndicate@$VERSION
-          
+
           # Verify it works
           hugo-syndicate --help 2>&1 | grep -q "DEVTO_API_KEY" || {
             echo "ERROR: Installed package doesn't work correctly"
             exit 1
           }
-          
+
           echo "✓ NPM package installation verified"
 
       - name: Create success notification
