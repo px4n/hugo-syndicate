@@ -202,15 +202,10 @@ jobs:
 
           # Create CHANGELOG.md if it doesn't exist
           if [ ! -f CHANGELOG.md ]; then
-            cat > CHANGELOG.md << 'CHANGELOG_EOF'
-# Changelog
-
-All notable changes to Hugo Syndicate will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-CHANGELOG_EOF
+            printf '# Changelog\n\n' > CHANGELOG.md
+            printf 'All notable changes to Hugo Syndicate will be documented in this file.\n\n' >> CHANGELOG.md
+            printf 'The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n' >> CHANGELOG.md
+            printf 'and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n' >> CHANGELOG.md
           fi
 
           # Add new entry after the header
