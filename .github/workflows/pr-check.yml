@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: ["feature/*", "fix/*", "hotfix/*", "docs/*", "refactor/*", "test/*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Validate commit messages
+        if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+        id: commit-check
+        run: |
+          # Get commits in this PR
+          COMMITS=$(git log --format="%s" origin/${{ github.base_ref }}..HEAD)
+
+          # Check if at least one commit follows conventional format
+          if echo "$COMMITS" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+"; then
+            echo "Found conventional commits"
+          else
+            echo "::error::No conventional commits found. At least one commit must follow conventional format for automatic versioning."
+            echo ""
+            echo "Valid formats:"
+            echo "  feat: add new feature"
+            echo "  fix: resolve validation error"
+            echo "  docs: update API documentation"
+            echo "  chore: update dependencies"
+            echo ""
+            echo "See https://www.conventionalcommits.org for more details."
+            exit 1
+          fi
+
+      - name: Run Trivy security scan
+        id: security
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+          format: "table"
+          skip-dirs: "node_modules,coverage,.git"
+
+      - name: Run tests with coverage
+        id: tests
+        run: |
+          npm run test:coverage
+
+          # Extract coverage percentage
+          if [ -f coverage/coverage-summary.json ]; then
+            COVERAGE=$(cat coverage/coverage-summary.json | jq -r '.total.lines.pct // 0' | cut -d. -f1)
+            echo "### Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$COVERAGE" -lt 60 ]; then
+              echo "::warning::Test coverage is ${COVERAGE}%. Consider adding more tests to improve coverage."
+            else
+              echo "Test coverage: ${COVERAGE}%"
+            fi
+          fi
+
+      - name: Dependency security audit
+        continue-on-error: true
+        run: |
+          npm audit --production --audit-level=high || {
+            echo "::warning::Security vulnerabilities found in dependencies. Run 'npm audit' locally for details."
+          }
+
+  test-matrix:
+    name: Test (Node ${{ matrix.node }} on ${{ matrix.os }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: [16, 18, 20]
+        include:
+          # Test on other OS only with latest Node
+          - os: windows-latest
+            node: 18
+          - os: macos-latest
+            node: 18
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  pr-summary:
+    name: PR Summary
+    if: github.event_name == 'pull_request'
+    needs: [validate, test-matrix]
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Comment PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const validate = '${{ needs.validate.result }}';
+            const matrix = '${{ needs.test-matrix.result }}';
+
+            const status = (validate === 'success' && matrix === 'success')
+              ? 'All checks passed'
+              : 'Some checks failed';
+
+            const comment = `## CI Results
+
+            ${status}
+
+            | Check | Status |
+            |-------|--------|
+            | Validation & Security | ${validate === 'success' ? 'Passed' : 'Failed'} |
+            | Cross-platform Tests | ${matrix === 'success' ? 'Passed' : 'Failed'} |
+
+            For details, check the [Actions tab](${{ github.event.pull_request.html_url }}/checks).`;
+
+            // Find and update existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes('## CI Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }

@@ -5,7 +5,7 @@
   "created": true,
   "deleted": false,
   "forced": false,
-  "base_ref": "refs/heads/main",
+  "base_ref": "refs/heads/develop",
   "repository": {
     "name": "hugo-syndicate",
     "full_name": "px4n/hugo-syndicate",
@@ -13,11 +13,11 @@
       "login": "px4n",
       "type": "User"
     },
-    "default_branch": "main"
+    "default_branch": "develop"
   },
   "pusher": {
     "name": "px4n",
-    "email": "test@example.com"
+    "email": "hello@px4n.com"
   },
   "sender": {
     "login": "px4n",

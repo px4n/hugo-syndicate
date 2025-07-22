@@ -1,15 +1,11 @@
 #!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
-const axios = require("axios");
 const fm = require("front-matter");
 const { execSync } = require("child_process");
 const TOML = require("@iarna/toml");
+const { createProvider, getAvailableProviders } = require("./providers");
 
-const DEVTO_API_KEY = process.env.DEVTO_API_KEY;
-const API_BASE = "https://dev.to/api";
-
-// Debug levels
 const DEBUG_LEVELS = {
   ERROR: 0,
   WARN: 1,
@@ -33,18 +29,42 @@ function log(level, message, data = null) {
   }
 }
 
-// Configurable settings
+function logError(message, data = null) {
+  log(DEBUG_LEVELS.ERROR, message, data);
+}
+
+function logWarn(message, data = null) {
+  log(DEBUG_LEVELS.WARN, message, data);
+}
+
+function logInfo(message, data = null) {
+  log(DEBUG_LEVELS.INFO, message, data);
+}
+
+function logDebug(message, data = null) {
+  log(DEBUG_LEVELS.DEBUG, message, data);
+}
+
+function logVerbose(message, data = null) {
+  log(DEBUG_LEVELS.VERBOSE, message, data);
+}
+
 const SYNC_CONFIG = {
   contentDir: process.env.CONTENT_DIR || "content/",
   allowedTypes: ["post"],
-  allowedDirectories: ["blog/", "articles/", "posts/", "tech/", "tutorials/"], // relative to contentDir
+  allowedDirectories: ["blog/", "articles/", "posts/", "tech/", "tutorials/"],
   requireExplicitSync: true,
-  maxTags: 4, // dev.to API limitation
+  defaultProvider: process.env.DEFAULT_PROVIDER || "devto",
+  providers: (process.env.PROVIDERS || "devto").split(",").map((p) => p.trim()),
 };
 
 // Cache for Hugo config to avoid re-reading
 let hugoConfig = null;
 
+/**
+ * Loads Hugo configuration from config files
+ * @returns {Object} Hugo configuration object
+ */
 function loadHugoConfig() {
   if (hugoConfig) return hugoConfig;
 
@@ -53,133 +73,169 @@ function loadHugoConfig() {
     if (fs.existsSync(configPath)) {
       const configContent = fs.readFileSync(configPath, "utf8");
       hugoConfig = TOML.parse(configContent);
-      log(DEBUG_LEVELS.DEBUG, "Loaded Hugo configuration from hugo.toml");
+      logDebug("Loaded Hugo configuration from hugo.toml");
     } else {
-      log(DEBUG_LEVELS.WARN, "hugo.toml not found, using fallback URL generation");
+      logWarn("hugo.toml not found, using fallback URL generation");
       hugoConfig = { permalinks: {} };
     }
   } catch (error) {
-    log(DEBUG_LEVELS.ERROR, "Failed to parse hugo.toml", error.message);
+    logError("Failed to parse hugo.toml", error.message);
     hugoConfig = { permalinks: {} };
   }
 
   return hugoConfig;
 }
 
-function validateEnvironment() {
-  log(DEBUG_LEVELS.INFO, "Validating environment...");
+/**
+ * Gets configuration for a specific provider
+ * @param {string} providerName - Name of the provider (devto, qiita)
+ * @returns {Object} Provider configuration with apiKey and baseUrl
+ * @throws {Error} If provider API key is missing
+ */
+function getProviderConfig(providerName) {
+  const configs = {
+    devto: {
+      apiKey: process.env.DEVTO_API_KEY,
+      baseUrl: process.env.DEVTO_API_BASE || "https://dev.to/api",
+    },
+    qiita: {
+      apiKey: process.env.QIITA_ACCESS_TOKEN,
+      baseUrl: process.env.QIITA_API_BASE || "https://qiita.com/api/v2",
+    },
+  };
 
-  if (!DEVTO_API_KEY) {
-    log(DEBUG_LEVELS.ERROR, "DEVTO_API_KEY environment variable is not set");
-    process.exit(1);
+  const config = configs[providerName.toLowerCase()];
+  if (!config || !config.apiKey) {
+    throw new Error(`Missing API key for provider: ${providerName}. Please set the appropriate environment variable.`);
   }
 
-  log(DEBUG_LEVELS.DEBUG, "DEVTO_API_KEY found", {
-    keyPreview: DEVTO_API_KEY.substring(0, 8) + "...",
-  });
+  return config;
 }
 
-async function testDevToConnection() {
-  log(DEBUG_LEVELS.INFO, "Testing dev.to API connection...");
+/**
+ * Parses command line arguments
+ * @returns {Object} Options object with providers, forceAll, and autoDelete settings
+ */
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const options = {
+    providers: SYNC_CONFIG.providers,
+    forceAll: process.env.FORCE_SYNC_ALL === "true",
+    autoDelete: process.env.AUTO_DELETE === "true",
+  };
 
-  try {
-    const response = await axios.get(`${API_BASE}/users/me`, {
-      headers: { "api-key": DEVTO_API_KEY },
-    });
-
-    log(DEBUG_LEVELS.INFO, `Connected to dev.to as: ${response.data.name} (@${response.data.username})`);
-    return true;
-  } catch (error) {
-    log(DEBUG_LEVELS.ERROR, "Failed to connect to dev.to API");
-    log(DEBUG_LEVELS.ERROR, "Error details", {
-      status: error.response?.status,
-      message: error.message,
-    });
-    return false;
-  }
-}
-
-async function getAllDevToArticles() {
-  log(DEBUG_LEVELS.INFO, "Fetching all articles from dev.to...");
-
-  try {
-    const [publishedResponse, unpublishedResponse] = await Promise.all([
-      axios.get(`${API_BASE}/articles/me/published`, {
-        headers: { "api-key": DEVTO_API_KEY },
-        timeout: 10000,
-      }),
-      axios.get(`${API_BASE}/articles/me/unpublished`, {
-        headers: { "api-key": DEVTO_API_KEY },
-        timeout: 10000,
-      }),
-    ]);
-
-    const allArticles = [...(publishedResponse.data || []), ...(unpublishedResponse.data || [])];
-
-    log(DEBUG_LEVELS.INFO, `Found ${allArticles.length} articles on dev.to`);
-    log(
-      DEBUG_LEVELS.DEBUG,
-      "dev.to articles",
-      allArticles.map((article) => ({
-        id: article.id,
-        title: article.title,
-        canonical_url: article.canonical_url,
-        published: article.published,
-      }))
-    );
-
-    return allArticles;
-  } catch (error) {
-    log(DEBUG_LEVELS.ERROR, "Failed to fetch articles from dev.to");
-    throw error;
-  }
-}
-
-function findExistingArticle(frontMatter, devtoArticles) {
-  log(DEBUG_LEVELS.DEBUG, `Looking for existing article: "${frontMatter.title}"`);
-
-  // Try to match by canonical URL first (most reliable)
-  if (frontMatter.canonical_url) {
-    const byCanonical = devtoArticles.find((article) => article.canonical_url === frontMatter.canonical_url);
-    if (byCanonical) {
-      log(DEBUG_LEVELS.DEBUG, `Found match by canonical URL: ${byCanonical.id}`);
-      return byCanonical;
+  for (let i = 0; i < args.length; i++) {
+    switch (args[i]) {
+      case "--provider":
+      case "-p":
+        if (args[i + 1]) {
+          options.providers = [args[i + 1]];
+          i++;
+        }
+        break;
+      case "--providers":
+        if (args[i + 1]) {
+          options.providers = args[i + 1].split(",").map((p) => p.trim());
+          i++;
+        }
+        break;
+      case "--force-all":
+      case "-f":
+        options.forceAll = true;
+        break;
+      case "--auto-delete":
+        options.autoDelete = true;
+        break;
+      case "--help":
+      case "-h":
+      case "--version":
+      case "-v":
+        // Already handled before main() is called
+        break;
     }
   }
 
-  // Fallback to title matching
-  const byTitle = devtoArticles.find((article) => article.title === frontMatter.title);
-
-  if (byTitle) {
-    log(DEBUG_LEVELS.DEBUG, `Found match by title: ${byTitle.id}`);
-    return byTitle;
-  }
-
-  log(DEBUG_LEVELS.DEBUG, `No existing article found`);
-  return null;
+  return options;
 }
 
-function shouldSyncPost(frontMatter, filePath) {
-  log(DEBUG_LEVELS.DEBUG, `Evaluating sync eligibility for: ${filePath}`);
+function showHelp() {
+  console.log(`
+Hugo Syndicate - Multi-provider content syndication for Hugo
 
-  // Check explicit sync flag
-  if (SYNC_CONFIG.requireExplicitSync && frontMatter.devto !== true) {
-    return { sync: false, reason: "syndication not enabled in front matter" };
+Usage: hugo-syndicate [options]
+
+Options:
+  -p, --provider <name>     Use a specific provider (default: ${SYNC_CONFIG.defaultProvider})
+  --providers <names>       Use multiple providers (comma-separated)
+  -f, --force-all          Force sync all posts (not just changed)
+  --auto-delete            Automatically delete orphaned articles
+  -h, --help               Show this help message
+  -v, --version            Show version information
+
+Available providers: ${getAvailableProviders().join(", ")}
+
+Environment variables:
+  DEVTO_API_KEY           API key for dev.to
+  QIITA_ACCESS_TOKEN      Access token for Qiita
+  DEFAULT_PROVIDER        Default provider to use
+  PROVIDERS               Comma-separated list of providers to sync
+  CONTENT_DIR             Hugo content directory (default: content/)
+  HUGO_BASE_URL           Base URL for your Hugo site
+  DEBUG_LEVEL             Debug level (0-4)
+  FORCE_SYNC_ALL          Force sync all posts (true/false)
+  AUTO_DELETE             Auto-delete orphaned articles (true/false)
+`);
+}
+
+function showVersion() {
+  const packageInfo = require("./package.json");
+  const os = require("os");
+
+  console.log(`Hugo Syndicate v${packageInfo.version}
+
+Build Information:
+  Node.js: ${process.version}
+  Platform: ${os.platform()} (${os.arch()})
+  OS: ${os.type()} ${os.release()}
+
+Package Information:
+  Name: ${packageInfo.name}
+  Description: ${packageInfo.description}
+  License: ${packageInfo.license}
+  Repository: ${packageInfo.repository.url}
+
+Supported Providers:
+  ${getAvailableProviders()
+    .map((p) => `- ${p}`)
+    .join("\n  ")}
+
+For more information, visit: ${packageInfo.homepage}`);
+}
+
+/**
+ * Determines if a post should be synced to a provider
+ * @param {Object} frontMatter - Post front matter object
+ * @param {string} filePath - Path to the markdown file
+ * @param {string} providerName - Name of the provider
+ * @returns {Object} Object with sync boolean and reason string
+ */
+function shouldSyncPost(frontMatter, filePath, providerName) {
+  logDebug(`Evaluating sync eligibility for: ${filePath} (provider: ${providerName})`);
+
+  const providerKey = providerName.toLowerCase().replace(/\./g, "");
+  if (SYNC_CONFIG.requireExplicitSync && frontMatter[providerKey] !== true && frontMatter.syndicate !== true) {
+    return { sync: false, reason: `syndication not enabled for ${providerName} in front matter` };
   }
 
-  // Check draft status
   if (frontMatter.draft === true) {
     return { sync: false, reason: "post is marked as draft" };
   }
 
-  // Check visibility
   if (frontMatter.visibility === "private") {
     return { sync: false, reason: "post marked as private" };
   }
 
-  // Check directory path
   if (SYNC_CONFIG.allowedDirectories.length > 0) {
-    // Make file path relative to content directory
     const relativePath = filePath.replace(new RegExp(`^${SYNC_CONFIG.contentDir}`), "");
     const inAllowedDir = SYNC_CONFIG.allowedDirectories.some((dir) => relativePath.startsWith(dir));
     if (!inAllowedDir) {
@@ -187,275 +243,27 @@ function shouldSyncPost(frontMatter, filePath) {
     }
   }
 
-  // Check post type
+  // TODO: Future consideration: scheduled posts based on publish_date
   const postType = frontMatter.type || "post";
   if (!SYNC_CONFIG.allowedTypes.includes(postType)) {
     return { sync: false, reason: `post type '${postType}' not allowed` };
   }
 
-  // No additional filtering needed - devto=true flag is sufficient
   return { sync: true, reason: "all validation checks passed" };
 }
 
-function transformHugoShortcodes(content) {
-  log(DEBUG_LEVELS.DEBUG, "Transforming Hugo shortcodes for dev.to...");
-
-  let transformed = content;
-
-  // Transform {{< image >}} shortcode to markdown image
-  transformed = transformed.replace(
-    /\{\{<\s*image\s+src="([^"]+)"\s+alt="([^"]*)"\s*(?:position="[^"]*")?\s*(?:style="[^"]*")?\s*>\}\}/g,
-    (match, src, alt) => {
-      // Convert relative URLs to absolute
-      const imageUrl = src.startsWith("/") ? `${process.env.HUGO_BASE_URL || "https://yoursite.com"}${src}` : src;
-      return `![${alt}](${imageUrl})`;
-    }
-  );
-
-  // Transform {{< code >}} shortcode to fenced code block
-  transformed = transformed.replace(
-    /\{\{<\s*code\s+language="([^"]+)"\s+title="([^"]*)"\s*(?:open="[^"]*")?\s*>\}\}([\s\S]*?)\{\{<\s*\/code\s*>\}\}/g,
-    (match, language, title, code) => {
-      const cleanCode = code.trim();
-      return title
-        ? `**${title}**\n\n\`\`\`${language}\n${cleanCode}\n\`\`\``
-        : `\`\`\`${language}\n${cleanCode}\n\`\`\``;
-    }
-  );
-
-  // Transform {{< youtube >}} shortcode
-  transformed = transformed.replace(/\{\{<\s*youtube\s+([^>\s]+)\s*>\}\}/g, (match, videoId) => {
-    return `{% youtube ${videoId} %}`;
-  });
-
-  // Transform {{< twitter >}} shortcode
-  transformed = transformed.replace(/\{\{<\s*twitter\s+([^>\s]+)\s*>\}\}/g, (match, tweetId) => {
-    return `{% twitter ${tweetId} %}`;
-  });
-
-  // Transform {{< gist >}} shortcode
-  transformed = transformed.replace(/\{\{<\s*gist\s+([^>\s]+)\s+([^>\s]+)\s*>\}\}/g, (match, username, gistId) => {
-    return `{% gist ${gistId} %}`;
-  });
-
-  if (transformed !== content) {
-    log(DEBUG_LEVELS.DEBUG, "Transformed Hugo shortcodes to dev.to compatible format");
-  }
-
-  return transformed;
-}
-
-function sanitizeTagsForDevTo(tags) {
-  if (!tags || !Array.isArray(tags)) return [];
-
-  return tags
-    .map((tag) => {
-      // Convert to string and sanitize
-      let sanitized = String(tag)
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "") // Remove all non-alphanumeric characters
-        .substring(0, 30); // dev.to has max tag length
-
-      // Log transformations for transparency
-      if (sanitized !== tag.toLowerCase()) {
-        log(DEBUG_LEVELS.INFO, `Tag transformed: "${tag}" → "${sanitized}"`);
-      }
-
-      return sanitized;
-    })
-    .filter((tag) => tag.length > 0); // Remove empty tags
-}
-
-async function deleteAndRecreateArticle(existingArticle, parsed) {
-  const frontMatter = parsed.attributes;
-
-  log(DEBUG_LEVELS.INFO, `Deleting and recreating article: "${frontMatter.title}"`);
-
-  try {
-    // Mark as unpublished instead of deleting (dev.to doesn't have delete API)
-    await axios.put(
-      `${API_BASE}/articles/${existingArticle.id}`,
-      {
-        article: {
-          published: false,
-          body_markdown: `This article has been replaced.\n\n*Replaced on: ${new Date().toISOString()}*`,
-        },
-      },
-      {
-        headers: { "api-key": DEVTO_API_KEY },
-        timeout: 10000,
-      }
-    );
-
-    log(DEBUG_LEVELS.INFO, `Marked old article as unpublished: ${existingArticle.id}`);
-
-    // Transform Hugo shortcodes for the new article
-    const transformedBody = transformHugoShortcodes(parsed.body);
-
-    // Sanitize and limit tags for dev.to
-    let tags = sanitizeTagsForDevTo(frontMatter.tags || []);
-    if (tags.length > SYNC_CONFIG.maxTags) {
-      log(DEBUG_LEVELS.WARN, `Post has ${tags.length} tags, limiting to first ${SYNC_CONFIG.maxTags} for dev.to`);
-      tags = tags.slice(0, SYNC_CONFIG.maxTags);
-    }
-
-    // Create new article
-    const article = {
-      title: frontMatter.title,
-      published: frontMatter.published !== false && frontMatter.draft !== true,
-      body_markdown: transformedBody,
-      tags: tags,
-      canonical_url: frontMatter.canonical_url,
-      series: frontMatter.series,
-    };
-
-    // Only add description if it exists and is not empty
-    if (frontMatter.description && frontMatter.description.trim() !== "") {
-      article.description = frontMatter.description;
-    }
-
-    // Remove undefined/null values
-    Object.keys(article).forEach((key) => {
-      if (article[key] === undefined || article[key] === null || article[key] === "") {
-        delete article[key];
-      }
-    });
-
-    log(DEBUG_LEVELS.DEBUG, "Article payload for dev.to", {
-      title: article.title,
-      tags: article.tags,
-      canonical_url: article.canonical_url,
-      published: article.published,
-    });
-
-    const response = await axios.post(
-      `${API_BASE}/articles`,
-      { article },
-      {
-        headers: { "api-key": DEVTO_API_KEY },
-        timeout: 10000,
-      }
-    );
-
-    log(DEBUG_LEVELS.INFO, `Created new article: "${frontMatter.title}"`);
-    log(DEBUG_LEVELS.INFO, `Article URL: ${response.data.url}`);
-
-    return response.data;
-  } catch (error) {
-    log(DEBUG_LEVELS.ERROR, `Failed to delete and recreate article`);
-    log(DEBUG_LEVELS.ERROR, "Delete/recreate error details", {
-      status: error.response?.status,
-      message: error.message,
-      data: error.response?.data,
-    });
-    throw error;
-  }
-}
-
-async function createOrUpdateArticle(parsed, existingArticle) {
-  const frontMatter = parsed.attributes;
-
-  // Transform Hugo shortcodes to dev.to compatible format
-  const transformedBody = transformHugoShortcodes(parsed.body);
-
-  // Sanitize and limit tags for dev.to
-  let tags = sanitizeTagsForDevTo(frontMatter.tags || []);
-  if (tags.length > SYNC_CONFIG.maxTags) {
-    log(DEBUG_LEVELS.WARN, `Post has ${tags.length} tags, limiting to first ${SYNC_CONFIG.maxTags} for dev.to`);
-    tags = tags.slice(0, SYNC_CONFIG.maxTags);
-  }
-
-  const article = {
-    title: frontMatter.title,
-    published: frontMatter.published !== false && frontMatter.draft !== true,
-    body_markdown: transformedBody,
-    tags: tags,
-    canonical_url: frontMatter.canonical_url,
-    series: frontMatter.series,
-  };
-
-  // Only add description if it exists and is not empty
-  if (frontMatter.description && frontMatter.description.trim() !== "") {
-    article.description = frontMatter.description;
-  }
-
-  // Remove undefined/null values
-  Object.keys(article).forEach((key) => {
-    if (article[key] === undefined || article[key] === null || article[key] === "") {
-      delete article[key];
-    }
-  });
-
-  try {
-    let response;
-
-    if (existingArticle) {
-      // Check if we should delete and recreate due to major changes
-      const hasCanonicalMismatch = existingArticle.canonical_url !== article.canonical_url;
-      const hasTitleMismatch = existingArticle.title !== article.title;
-
-      if (hasCanonicalMismatch || hasTitleMismatch) {
-        log(DEBUG_LEVELS.INFO, `Major changes detected, will delete and recreate`);
-        if (hasCanonicalMismatch) {
-          log(DEBUG_LEVELS.DEBUG, `Canonical URL: "${existingArticle.canonical_url}" → "${article.canonical_url}"`);
-        }
-        if (hasTitleMismatch) {
-          log(DEBUG_LEVELS.DEBUG, `Title: "${existingArticle.title}" → "${article.title}"`);
-        }
-
-        const result = await deleteAndRecreateArticle(existingArticle, parsed);
-        return result;
-      }
-
-      // Update existing article
-      log(DEBUG_LEVELS.INFO, `Updating existing article: "${frontMatter.title}"`);
-
-      response = await axios.put(
-        `${API_BASE}/articles/${existingArticle.id}`,
-        { article },
-        {
-          headers: { "api-key": DEVTO_API_KEY },
-          timeout: 10000,
-        }
-      );
-
-      log(DEBUG_LEVELS.INFO, `Successfully updated: "${frontMatter.title}"`);
-    } else {
-      // Create new article
-      log(DEBUG_LEVELS.INFO, `Creating new article: "${frontMatter.title}"`);
-
-      response = await axios.post(
-        `${API_BASE}/articles`,
-        { article },
-        {
-          headers: { "api-key": DEVTO_API_KEY },
-          timeout: 10000,
-        }
-      );
-
-      log(DEBUG_LEVELS.INFO, `Successfully created: "${frontMatter.title}"`);
-      log(DEBUG_LEVELS.INFO, `Article URL: ${response.data.url}`);
-    }
-
-    return response.data;
-  } catch (error) {
-    log(DEBUG_LEVELS.ERROR, `Error syncing "${frontMatter.title}"`);
-    log(DEBUG_LEVELS.ERROR, "Sync error details", {
-      status: error.response?.status,
-      message: error.message,
-      data: error.response?.data,
-    });
-    throw error;
-  }
-}
-
+/**
+ * Generates canonical URL for a post
+ * @param {string} filePath - Path to the markdown file
+ * @param {Object} frontMatter - Post front matter object
+ * @returns {string} Canonical URL for the post
+ */
 function generateCanonicalUrl(filePath, frontMatter) {
-  log(DEBUG_LEVELS.DEBUG, `Generating canonical URL for: ${filePath}`);
+  logDebug(`Generating canonical URL for: ${filePath}`);
 
   const baseUrl = process.env.HUGO_BASE_URL || "https://yoursite.com";
   const config = loadHugoConfig();
 
-  // Extract relative path from configurable content directory
   const contentDirRegex = new RegExp(`^${SYNC_CONFIG.contentDir}`);
   const relativePath = filePath.replace(contentDirRegex, "");
 
@@ -463,10 +271,8 @@ function generateCanonicalUrl(filePath, frontMatter) {
   const fileName = fileInfo.name;
   const dir = fileInfo.dir;
 
-  // Determine content section (first directory)
   const section = dir.split("/")[0] || "page";
 
-  // Extract language from filename (e.g., post.en.md -> en)
   let slug = fileName;
   let language = null;
 
@@ -476,7 +282,6 @@ function generateCanonicalUrl(filePath, frontMatter) {
     language = langMatch[2];
   }
 
-  // Extract date prefix if present (e.g., "03-my-post" -> day=03, slug="my-post")
   let day = null;
   const dateMatch = slug.match(/^(\d{2})-(.+)$/);
   if (dateMatch) {
@@ -484,25 +289,21 @@ function generateCanonicalUrl(filePath, frontMatter) {
     slug = dateMatch[2];
   }
 
-  // Use frontmatter slug if provided
   if (frontMatter.slug) {
     slug = frontMatter.slug;
   }
 
-  // Get permalink pattern from Hugo config
   const permalinkPattern = config.permalinks?.page?.[section] || config.permalinks?.[section];
 
   if (permalinkPattern) {
-    log(DEBUG_LEVELS.DEBUG, `Using Hugo permalink pattern: ${permalinkPattern}`);
+    logDebug(`Using Hugo permalink pattern: ${permalinkPattern}`);
 
-    // Extract date components from file path and frontmatter
     const pathParts = dir.split("/");
     const year =
       pathParts[1] || (frontMatter.date ? frontMatter.date.substring(0, 4) : new Date().getFullYear().toString());
     const month = pathParts[2] || (frontMatter.date ? frontMatter.date.substring(5, 7) : "01");
     const dayValue = day || pathParts[3] || (frontMatter.date ? frontMatter.date.substring(8, 10) : "01");
 
-    // Replace Hugo permalink variables
     let url = permalinkPattern
       .replace(":year", year)
       .replace(":month", month)
@@ -511,33 +312,17 @@ function generateCanonicalUrl(filePath, frontMatter) {
       .replace(":title", frontMatter.title ? frontMatter.title.toLowerCase().replace(/[^a-z0-9]+/g, "-") : slug)
       .replace(":filename", fileName);
 
-    // Handle language prefix for multilingual sites
     if (language && language !== "en" && config.defaultContentLanguage !== language) {
       url = `/${language}${url}`;
     }
 
     const canonicalUrl = `${baseUrl}${url}`;
-    log(DEBUG_LEVELS.DEBUG, `Generated canonical URL: ${canonicalUrl}`);
-
-    log(DEBUG_LEVELS.VERBOSE, "Hugo-aware URL generation details", {
-      filePath,
-      relativePath,
-      section,
-      slug,
-      language: language || "en (default)",
-      permalinkPattern,
-      year,
-      month,
-      day: dayValue,
-      url,
-      canonicalUrl,
-    });
+    logDebug(`Generated canonical URL: ${canonicalUrl}`);
 
     return canonicalUrl;
   }
 
-  // Fallback to previous logic if no permalink pattern found
-  log(DEBUG_LEVELS.DEBUG, `No permalink pattern found for section '${section}', using fallback`);
+  logDebug(`No permalink pattern found for section '${section}', using fallback`);
 
   let urlPath;
   if (language && language !== "en") {
@@ -547,21 +332,16 @@ function generateCanonicalUrl(filePath, frontMatter) {
   }
 
   const canonicalUrl = `${baseUrl}${urlPath}`;
-  log(DEBUG_LEVELS.DEBUG, `Fallback canonical URL: ${canonicalUrl}`);
-
-  log(DEBUG_LEVELS.VERBOSE, "Fallback URL generation details", {
-    filePath,
-    relativePath,
-    slug,
-    language: language || "en (default)",
-    directory: dir || "root",
-    urlPath,
-    canonicalUrl,
-  });
+  logDebug(`Fallback canonical URL: ${canonicalUrl}`);
 
   return canonicalUrl;
 }
 
+/**
+ * Parses a Hugo markdown file and extracts front matter
+ * @param {string} filePath - Path to the markdown file
+ * @returns {Object|null} Parsed content with frontMatter and content, or null if invalid
+ */
 function parseHugoFile(filePath) {
   const content = fs.readFileSync(filePath, "utf8");
 
@@ -569,11 +349,9 @@ function parseHugoFile(filePath) {
     let parsed;
 
     if (content.startsWith("---")) {
-      // YAML front matter
       parsed = fm(content);
-      log(DEBUG_LEVELS.DEBUG, "Parsed as YAML front matter");
+      logDebug("Parsed as YAML front matter");
     } else if (content.startsWith("+++")) {
-      // TOML front matter
       const tomlMatch = content.match(/^\+\+\+\n([\s\S]*?)\n\+\+\+\n([\s\S]*)$/);
       if (tomlMatch) {
         const tomlContent = tomlMatch[1];
@@ -614,7 +392,7 @@ function parseHugoFile(filePath) {
           body: bodyContent.trim(),
         };
 
-        log(DEBUG_LEVELS.DEBUG, "Parsed as TOML front matter");
+        logDebug("Parsed as TOML front matter");
       } else {
         throw new Error("Invalid TOML front matter format");
       }
@@ -622,110 +400,37 @@ function parseHugoFile(filePath) {
       throw new Error("Unsupported front matter format - must start with --- or +++");
     }
 
-    // Auto-generate canonical URL if not provided
     if (!parsed.attributes.canonical_url) {
       parsed.attributes.canonical_url = generateCanonicalUrl(filePath, parsed.attributes);
-      log(DEBUG_LEVELS.INFO, `Auto-generated canonical URL: ${parsed.attributes.canonical_url}`);
+      logInfo(`Auto-generated canonical URL: ${parsed.attributes.canonical_url}`);
     }
 
     return parsed;
   } catch (parseError) {
-    log(DEBUG_LEVELS.ERROR, `Failed to parse front matter in ${filePath}`, parseError.message);
+    logError(`Failed to parse front matter in ${filePath}`, parseError.message);
+    // Add more debugging info
+    if (logLevel >= 3) {
+      logDebug(`File starts with: ${content.substring(0, 10).replace(/\n/g, "\\n")}`);
+      logDebug(`Parse error details: ${parseError.stack}`);
+    }
     throw parseError;
   }
 }
 
-async function cleanupOrphanedArticles(allHugoFiles, allDevToArticles) {
-  log(DEBUG_LEVELS.INFO, "Checking for orphaned articles on dev.to...");
+/**
+ * Gets list of changed files or all files based on options
+ * @param {boolean} forceAll - Whether to process all files instead of just changed
+ * @returns {Promise<Array<string>>} Array of file paths to process
+ */
+async function getChangedFiles(forceAll) {
+  logInfo("Getting files to process...");
 
-  // Get all canonical URLs and titles from Hugo files
-  const hugoArticles = new Set();
-
-  for (const file of allHugoFiles) {
-    try {
-      if (!fs.existsSync(file)) continue;
-
-      const parsed = parseHugoFile(file);
-      const syncCheck = shouldSyncPost(parsed.attributes, file);
-
-      if (syncCheck.sync) {
-        // Add canonical URL as primary identifier
-        if (parsed.attributes.canonical_url) {
-          hugoArticles.add(parsed.attributes.canonical_url);
-        }
-        // Add title as fallback identifier
-        if (parsed.attributes.title) {
-          hugoArticles.add(parsed.attributes.title);
-        }
-      }
-    } catch (error) {
-      log(DEBUG_LEVELS.DEBUG, `Failed to parse ${file}`, error.message);
-    }
-  }
-
-  log(DEBUG_LEVELS.DEBUG, `Found ${hugoArticles.size} sync-eligible articles in Hugo`);
-
-  // Find orphaned articles
-  const orphanedArticles = allDevToArticles.filter((article) => {
-    const hasCanonicalMatch = article.canonical_url && hugoArticles.has(article.canonical_url);
-    const hasTitleMatch = article.title && hugoArticles.has(article.title);
-    return !hasCanonicalMatch && !hasTitleMatch;
-  });
-
-  if (orphanedArticles.length === 0) {
-    log(DEBUG_LEVELS.INFO, "No orphaned articles found on dev.to");
-    return { checked: allDevToArticles.length, orphaned: 0, deleted: 0 };
-  }
-
-  log(DEBUG_LEVELS.INFO, `Found ${orphanedArticles.length} orphaned articles on dev.to`);
-
-  let deletedCount = 0;
-
-  for (const article of orphanedArticles) {
-    log(DEBUG_LEVELS.INFO, `  "${article.title}" (ID: ${article.id})`);
-
-    if (process.env.AUTO_DELETE_DEVTO === "true") {
-      try {
-        await axios.put(
-          `${API_BASE}/articles/${article.id}`,
-          {
-            article: {
-              published: false,
-              body_markdown: `This article has been removed from the source blog.\n\n*Removed on: ${new Date().toISOString()}*`,
-            },
-          },
-          {
-            headers: { "api-key": DEVTO_API_KEY },
-            timeout: 10000,
-          }
-        );
-
-        log(DEBUG_LEVELS.INFO, `Unpublished orphaned article: "${article.title}"`);
-        deletedCount++;
-      } catch (deleteError) {
-        log(DEBUG_LEVELS.ERROR, `Failed to unpublish "${article.title}"`);
-      }
-    } else {
-      log(DEBUG_LEVELS.INFO, `Manual action: Consider removing "${article.title}" from dev.to`);
-    }
-  }
-
-  return {
-    checked: allDevToArticles.length,
-    orphaned: orphanedArticles.length,
-    deleted: deletedCount,
-  };
-}
-
-async function getChangedFiles() {
-  log(DEBUG_LEVELS.INFO, "Getting files to process...");
-
-  if (process.env.FORCE_SYNC_ALL === "true") {
-    log(DEBUG_LEVELS.INFO, "FORCE_SYNC_ALL enabled - processing all posts");
+  if (forceAll) {
+    logInfo("Force sync all enabled - processing all posts");
 
     const contentDir = SYNC_CONFIG.contentDir;
     if (!fs.existsSync(contentDir)) {
-      log(DEBUG_LEVELS.WARN, `Content directory '${contentDir}' does not exist`);
+      logWarn(`Content directory '${contentDir}' does not exist`);
       return [];
     }
 
@@ -744,147 +449,287 @@ async function getChangedFiles() {
     }
 
     findMarkdownFiles(contentDir);
-    log(DEBUG_LEVELS.INFO, `Found ${allFiles.length} total markdown files`);
+    logInfo(`Found ${allFiles.length} total markdown files`);
     return allFiles;
   }
 
-  // Normal mode: only changed files
   try {
-    const gitOutput = execSync("git diff --name-only HEAD~1 HEAD", { encoding: "utf8" });
+    // Try to get changed files from the last commit
+    let gitOutput;
+    try {
+      // Try HEAD~1 first (for regular commits)
+      gitOutput = execSync("git diff --name-only HEAD~1 HEAD", { encoding: "utf8" });
+    } catch (e) {
+      // Handle initial commit scenario
+      gitOutput = execSync("git ls-tree --name-only -r HEAD", { encoding: "utf8" });
+    }
+
     const changedFiles = gitOutput
       .split("\n")
       .filter(Boolean)
       .filter((file) => file.startsWith(SYNC_CONFIG.contentDir) && file.endsWith(".md"));
 
-    log(DEBUG_LEVELS.INFO, `Found ${changedFiles.length} changed markdown files`);
+    logInfo(`Found ${changedFiles.length} changed markdown files`);
     return changedFiles;
   } catch (error) {
-    log(DEBUG_LEVELS.ERROR, "Failed to get changed files from Git");
+    logError("Failed to get changed files from Git", error.message);
     return [];
   }
 }
 
-async function syncToDevTo() {
-  log(DEBUG_LEVELS.INFO, "Starting Hugo Syndicate synchronization...");
-  log(DEBUG_LEVELS.INFO, `Debug level: ${Object.keys(DEBUG_LEVELS)[DEBUG_LEVEL]} (${DEBUG_LEVEL})`);
+async function syncWithProvider(provider, providerName, filesToProcess, options) {
+  logInfo(`\n=== Starting sync with ${providerName} ===`);
 
-  validateEnvironment();
-
-  const connected = await testDevToConnection();
-  if (!connected) {
-    log(DEBUG_LEVELS.ERROR, "Aborting sync due to API connection failure");
-    process.exit(1);
+  // Test connection
+  try {
+    const auth = await provider.authenticate();
+    logInfo(`Connected to ${providerName} as: ${auth.user.name || auth.user.username}`);
+  } catch (error) {
+    logError(`Failed to connect to ${providerName}`);
+    return {
+      provider: providerName,
+      error: error.message,
+      processed: 0,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      errors: 0,
+    };
   }
 
-  // Get all dev.to articles for matching and cleanup
-  const allDevToArticles = await getAllDevToArticles();
-
-  // Get files to process
-  const filesToProcess = await getChangedFiles();
-
-  let cleanupStats = { checked: 0, orphaned: 0, deleted: 0 };
-
-  // If FORCE_SYNC_ALL, also cleanup orphaned articles
-  if (process.env.FORCE_SYNC_ALL === "true") {
-    cleanupStats = await cleanupOrphanedArticles(filesToProcess, allDevToArticles);
+  // Get all articles for matching
+  let allArticles = [];
+  try {
+    allArticles = await provider.getArticles();
+    logInfo(`Found ${allArticles.length} articles on ${providerName}`);
+  } catch (error) {
+    logError(`Failed to fetch articles from ${providerName}`);
   }
 
-  if (filesToProcess.length === 0) {
-    log(DEBUG_LEVELS.INFO, "No markdown files to process");
-    if (cleanupStats.orphaned > 0) {
-      log(DEBUG_LEVELS.INFO, `Cleanup: ${cleanupStats.deleted}/${cleanupStats.orphaned} orphaned articles handled`);
-    }
-    return;
-  }
+  const stats = {
+    provider: providerName,
+    processed: 0,
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    errors: 0,
+    orphaned: 0,
+    deleted: 0,
+  };
 
-  log(DEBUG_LEVELS.INFO, `Processing ${filesToProcess.length} files...`);
-
-  let processed = 0;
-  let created = 0;
-  let updated = 0;
-  let recreated = 0;
-  let skipped = 0;
-  let errors = 0;
-
+  // Process each file
   for (const file of filesToProcess) {
-    processed++;
-    log(DEBUG_LEVELS.INFO, `\n[${processed}/${filesToProcess.length}] Processing: ${file}`);
+    stats.processed++;
+    logInfo(`\n[${stats.processed}/${filesToProcess.length}] Processing: ${file}`);
 
     try {
       if (!fs.existsSync(file)) {
-        log(DEBUG_LEVELS.WARN, `File ${file} no longer exists, skipping...`);
+        logWarn(`File ${file} no longer exists, skipping...`);
         continue;
       }
 
       const parsed = parseHugoFile(file);
 
       if (!parsed.attributes.title) {
-        log(DEBUG_LEVELS.WARN, `Skipping ${file}: No title found`);
-        skipped++;
+        logWarn(`Skipping ${file}: No title found`);
+        stats.skipped++;
         continue;
       }
 
-      const syncCheck = shouldSyncPost(parsed.attributes, file);
+      const syncCheck = shouldSyncPost(parsed.attributes, file, providerName);
 
       if (!syncCheck.sync) {
-        log(DEBUG_LEVELS.INFO, `Skipping: ${syncCheck.reason}`);
-        skipped++;
+        logInfo(`Skipping: ${syncCheck.reason}`);
+        stats.skipped++;
         continue;
       }
 
-      // Find existing article using natural keys
-      const existingArticle = findExistingArticle(parsed.attributes, allDevToArticles);
+      const article = {
+        title: parsed.attributes.title,
+        content: parsed.body,
+        tags: parsed.attributes.tags || [],
+        canonical_url: parsed.attributes.canonical_url,
+        description: parsed.attributes.description,
+        series: parsed.attributes.series,
+        published: parsed.attributes.published !== false && parsed.attributes.draft !== true,
+      };
 
-      const result = await createOrUpdateArticle(parsed, existingArticle);
+      const existingArticle = await provider.checkIfArticleExists(article.canonical_url, article.title);
 
-      if (!existingArticle) {
-        created++;
-      } else if (result.id !== existingArticle.id) {
-        recreated++; // Delete and recreate happened
+      let result;
+      if (existingArticle) {
+        logInfo(`Updating existing article: "${article.title}"`);
+        result = await provider.updateArticle(existingArticle.id, article);
+        stats.updated++;
       } else {
-        updated++;
+        logInfo(`Creating new article: "${article.title}"`);
+        result = await provider.createArticle(article);
+        stats.created++;
       }
+
+      logInfo(`Article URL: ${result.url}`);
     } catch (error) {
-      errors++;
-      log(DEBUG_LEVELS.ERROR, `Failed to process ${file}`);
-      log(DEBUG_LEVELS.ERROR, "Processing error", error.message);
+      stats.errors++;
+      logError(`Failed to process ${file}`);
+      logError("Processing error", error.message);
+    }
+  }
+
+  // Cleanup orphaned articles if requested
+  if (options.forceAll && options.autoDelete) {
+    const hugoArticles = new Set();
+
+    for (const file of filesToProcess) {
+      try {
+        if (!fs.existsSync(file)) continue;
+
+        const parsed = parseHugoFile(file);
+        const syncCheck = shouldSyncPost(parsed.attributes, file, providerName);
+
+        if (syncCheck.sync) {
+          if (parsed.attributes.canonical_url) {
+            hugoArticles.add(parsed.attributes.canonical_url);
+          }
+          if (parsed.attributes.title) {
+            hugoArticles.add(parsed.attributes.title);
+          }
+        }
+      } catch (error) {
+        logDebug(`Failed to parse ${file}`, error.message);
+      }
+    }
+
+    const orphanedArticles = allArticles.filter((article) => {
+      const hasCanonicalMatch = article.canonical_url && hugoArticles.has(article.canonical_url);
+      const hasTitleMatch = article.title && hugoArticles.has(article.title);
+      return !hasCanonicalMatch && !hasTitleMatch;
+    });
+
+    stats.orphaned = orphanedArticles.length;
+
+    if (orphanedArticles.length > 0) {
+      logInfo(`Found ${orphanedArticles.length} orphaned articles on ${providerName}`);
+
+      for (const article of orphanedArticles) {
+        try {
+          await provider.deleteArticle(article.id);
+          logInfo(`Deleted orphaned article: "${article.title}"`);
+          stats.deleted++;
+        } catch (error) {
+          logError(`Failed to delete "${article.title}"`);
+        }
+      }
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Main function that orchestrates the sync process
+ * @returns {Promise<void>}
+ */
+async function main() {
+  logInfo("Starting Hugo Syndicate multi-provider synchronization...");
+  logInfo(`Debug level: ${Object.keys(DEBUG_LEVELS)[DEBUG_LEVEL]} (${DEBUG_LEVEL})`);
+
+  const options = parseArgs();
+  const filesToProcess = await getChangedFiles(options.forceAll);
+
+  if (filesToProcess.length === 0) {
+    logInfo("No markdown files to process");
+    return;
+  }
+
+  logInfo(`Processing ${filesToProcess.length} files with providers: ${options.providers.join(", ")}`);
+
+  const results = [];
+
+  for (const providerName of options.providers) {
+    try {
+      const config = getProviderConfig(providerName);
+      const provider = createProvider(providerName, config);
+      const result = await syncWithProvider(provider, providerName, filesToProcess, options);
+      results.push(result);
+    } catch (error) {
+      logError(`Failed to initialize provider ${providerName}: ${error.message}`);
+      results.push({
+        provider: providerName,
+        error: error.message,
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        errors: 0,
+      });
     }
   }
 
   // Final summary
-  log(DEBUG_LEVELS.INFO, "\nSynchronization Summary:");
-  log(DEBUG_LEVELS.INFO, `  Files processed: ${processed}`);
-  log(DEBUG_LEVELS.INFO, `  Created: ${created}`);
-  log(DEBUG_LEVELS.INFO, `  Updated: ${updated}`);
-  log(DEBUG_LEVELS.INFO, `  Recreated: ${recreated}`);
-  log(DEBUG_LEVELS.INFO, `  Skipped: ${skipped}`);
-  log(DEBUG_LEVELS.INFO, `  Errors: ${errors}`);
+  logInfo("\n=== Synchronization Summary ===");
 
-  if (process.env.FORCE_SYNC_ALL === "true" && cleanupStats.orphaned > 0) {
-    log(DEBUG_LEVELS.INFO, `  Orphaned cleaned: ${cleanupStats.deleted}/${cleanupStats.orphaned}`);
+  let totalErrors = 0;
+  for (const result of results) {
+    logInfo(`\n${result.provider}:`);
+    if (result.error) {
+      logError(`  Error: ${result.error}`);
+      totalErrors++;
+    } else {
+      logInfo(`  Files processed: ${result.processed}`);
+      logInfo(`  Created: ${result.created}`);
+      logInfo(`  Updated: ${result.updated}`);
+      logInfo(`  Skipped: ${result.skipped}`);
+      logInfo(`  Errors: ${result.errors}`);
+      if (result.orphaned > 0) {
+        logInfo(`  Orphaned cleaned: ${result.deleted}/${result.orphaned}`);
+      }
+      totalErrors += result.errors;
+    }
   }
 
-  if (errors > 0) {
-    log(DEBUG_LEVELS.ERROR, "Some files failed to sync - check logs above");
+  if (totalErrors > 0) {
+    logError("\nSome operations failed - check logs above");
     process.exit(1);
   }
 
-  log(DEBUG_LEVELS.INFO, "Synchronization completed successfully!");
+  logInfo("\nSynchronization completed successfully!");
 }
 
-// Handle uncaught errors
+// Handle unexpected errors appropriately
 process.on("uncaughtException", (error) => {
-  log(DEBUG_LEVELS.ERROR, "Uncaught exception", error);
+  logError("Uncaught exception", error);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  log(DEBUG_LEVELS.ERROR, "Unhandled promise rejection", { reason, promise });
+  logError("Unhandled promise rejection", { reason, promise });
   process.exit(1);
 });
 
-// Run the sync
-syncToDevTo().catch((error) => {
-  log(DEBUG_LEVELS.ERROR, "Sync failed", error);
-  process.exit(1);
-});
+// Run if called directly
+if (require.main === module) {
+  // Check for version or help flags before running main
+  const args = process.argv.slice(2);
+  if (args.includes("--version") || args.includes("-v")) {
+    showVersion();
+    process.exit(0);
+  } else if (args.includes("--help") || args.includes("-h")) {
+    showHelp();
+    process.exit(0);
+  }
+
+  main().catch((error) => {
+    logError("Sync failed", error);
+    process.exit(1);
+  });
+}
+
+// Export for testing
+module.exports = {
+  parseHugoFile,
+  generateCanonicalUrl,
+  getChangedFiles,
+  syncWithProvider,
+  main,
+  shouldSyncPost,
+};

@@ -1,146 +1,92 @@
-# GitHub Actions Workflows for Hugo Syndicate Users
+# GitHub Actions Workflows for Hugo Syndicate
 
-This directory contains example GitHub Actions workflows that **users of Hugo Syndicate** can copy to their Hugo project's `.github/workflows/` directory.
-
-> **Note**: The Hugo Syndicate repository itself has its own CI workflows in `.github/workflows/` for testing the package. These examples are for users who want to automate their Hugo blog syndication.
+Minimal example workflows for automating content syndication from your Hugo blog to dev.to and Qiita.
 
 ## Available Workflows
 
-### 1. `sync-devto.yml` - Automatic Syndication
+### 1. `sync-providers.yml` - Automatic Sync
 
-**For automatic content publishing**
-
-- Automatically syncs posts when changes are pushed to main
-- Only processes files in `content/posts/` directory
-- Requires `DEVTO_API_KEY` secret and `HUGO_BASE_URL` variable
+**Automatically sync when you push changes**
 
 ```yaml
-# Copy to: .github/workflows/sync-devto.yml
+# Syncs on push to main branch
+# Triggers when content/*.md files change
+# Manual trigger available
 ```
 
-### 2. `sync-devto-manual.yml` - Manual Syndication
+### 2. `sync-manual.yml` - Manual Sync
 
-**For controlled content publishing**
-
-- Manual trigger with options:
-  - Sync only changed files
-  - Sync all posts
-  - Cleanup orphaned articles
-- Configurable debug levels
-- Upload sync logs as artifacts
+**Manually trigger syndication**
 
 ```yaml
-# Copy to: .github/workflows/sync-devto-manual.yml
+# Manual trigger only
+# Option to force sync all posts
 ```
 
-### 3. `validate-posts.yml` - Content Validation
+## Quick Setup
 
-**For content quality assurance**
-
-- Validates markdown files on pull requests
-- Checks front matter format (YAML/TOML)
-- Ensures required fields for dev.to syndication
-- Comments on PR if validation fails
-
-```yaml
-# Copy to: .github/workflows/validate-posts.yml
-```
-
-## Setup Instructions
-
-### 1. Choose Your Workflows
-
-Copy the desired workflow files from this directory to your project's `.github/workflows/` directory:
+### 1. Install hugo-syndicate
 
 ```bash
-# Example: Copy CI workflow
+npm install -g hugo-syndicate
+```
+
+### 2. Copy a workflow
+
+```bash
 mkdir -p .github/workflows
-cp examples/github-workflows/ci.yml .github/workflows/
+cp sync-providers.yml .github/workflows/
 ```
 
-### 2. Configure Repository Secrets
+### 3. Add secrets
 
-For syndication workflows, add these secrets in your GitHub repository settings:
+In your repository settings → Secrets:
 
-- `DEVTO_API_KEY`: Your dev.to API key from https://dev.to/settings/account
+- `DEVTO_API_KEY` - Get from [dev.to/settings/account](https://dev.to/settings/account)
+- `QIITA_ACCESS_TOKEN` - Get from [qiita.com/settings/applications](https://qiita.com/settings/applications)
 
-### 3. Configure Repository Variables
+### 4. Add variables
 
-Add these variables in your GitHub repository settings:
+In your repository settings → Variables:
 
-- `HUGO_BASE_URL`: Your Hugo site's base URL (e.g., `https://myblog.com`)
+- `HUGO_BASE_URL` - Your site URL (e.g., `https://myblog.com`)
 
-### 4. Branch Protection (Optional)
+## Usage
 
-Consider adding branch protection rules that require the CI workflow to pass before merging.
+### Mark posts for syndication
 
-## Workflow Triggers
-
-All test workflows are configured to run on **any branch except `develop`** using:
+In your Hugo post front matter:
 
 ```yaml
-on:
-  push:
-    branches-ignore:
-      - develop
-  pull_request:
-    branches-ignore:
-      - develop
+---
+title: "My Blog Post"
+devto: true # Sync to dev.to
+qiita: true # Sync to Qiita
+# OR
+syndicate: true # Sync to all configured providers
+---
 ```
 
-This ensures that:
+### Supported directories
 
-- Tests run on feature branches
-- Tests run on main/master branch
-- Tests run on pull requests
-- The `develop` branch is excluded (useful for development/staging)
+Posts must be in one of:
 
-## Customization
-
-### Changing Excluded Branches
-
-To exclude different branches, modify the `branches-ignore` section:
-
-```yaml
-branches-ignore:
-  - develop
-  - staging
-  - experimental
-```
-
-### Adding More Node.js Versions
-
-In `test.yml`, modify the strategy matrix:
-
-```yaml
-strategy:
-  matrix:
-    node-version: [16, 18, 20, 22] # Add more versions
-```
-
-### Custom Content Directories
-
-If your content is not in `content/posts/`, update the path filters in the syndication workflows.
+- `content/blog/`
+- `content/posts/`
+- `content/articles/`
+- `content/tech/`
+- `content/tutorials/`
 
 ## Troubleshooting
 
-### Tests Failing
+**Workflow not running?**
 
-1. Ensure all dependencies are properly listed in `package.json`
-2. Check that tests pass locally with `npm test`
-3. Verify Node.js version compatibility
+- Check secrets are set correctly
+- Ensure post has `devto: true` or `qiita: true`
+- Verify post is in a supported directory
 
-### Syndication Issues
+**Sync failed?**
 
-1. Verify `DEVTO_API_KEY` is correctly set in repository secrets
-2. Check that `HUGO_BASE_URL` matches your actual site URL
-3. Ensure posts have proper front matter with `devto = true`
-
-### Permission Issues
-
-1. Ensure `hugo-syndicate.js` is executable in your repository
-2. Check that the workflow has necessary permissions for your use case
-
-## Contributing
-
-If you improve these workflows, consider submitting a pull request to help other users!
+- Check API keys are valid
+- Ensure `HUGO_BASE_URL` is correct
+- Run `hugo-syndicate` locally to debug

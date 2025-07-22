@@ -21,7 +21,7 @@
       }
     },
     "base": {
-      "ref": "main",
+      "ref": "develop",
       "sha": "abcdef1234567890abcdef1234567890abcdef12",
       "repo": {
         "name": "hugo-syndicate",

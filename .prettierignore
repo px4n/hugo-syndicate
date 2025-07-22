@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Production
+dist/
+build/
+
+# Testing
+coverage/
+
+# Git
+.git/
+
+# Misc
+*.log
+*.md
+CHANGELOG.md
+LICENSE
+
+# Package files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

@@ -1,110 +1,82 @@
-# Contributing to Hugo Syndicate
+# Contributing
 
-Thank you for your interest in contributing to Hugo Syndicate. This guide will help you get started.
-
-## Development Setup
+## Setup
 
 1. Fork and clone the repository
 2. Install dependencies: `npm install`
 3. Run tests: `npm test`
-4. Make your changes
-5. Ensure tests pass: `npm test`
-6. Submit a pull request
 
-## Commit Message Guidelines
+## Commit Messages
 
-We use conventional commits for clear communication and automated changelog generation.
+We use conventional commits for automated versioning. Format: `type(scope): subject`
 
-### Format
+**Types:**
 
-```
-<type>(<scope>): <subject>
+- `feat`: New feature (minor version)
+- `fix`: Bug fix (patch version)
+- `perf`: Performance improvement (patch version)
+- `feat!` or `BREAKING CHANGE`: Breaking change (major version)
+- `docs`, `style`, `refactor`, `test`, `build`, `ci`: No version bump
+- `chore`: Maintenance (hidden from changelog)
+- `revert`: Revert a previous commit
 
-<body>
-
-<footer>
-```
-
-### Types
-
-- **feat**: A new feature
-- **fix**: A bug fix
-- **docs**: Documentation only changes
-- **style**: Changes that do not affect code meaning (formatting, missing semicolons, etc)
-- **refactor**: Code change that neither fixes a bug nor adds a feature
-- **perf**: Code change that improves performance
-- **test**: Adding missing tests or correcting existing tests
-- **chore**: Changes to build process or auxiliary tools
-
-### Examples
+**Examples:**
 
 ```bash
-feat: add support for Medium platform
-
-fix: correct tag sanitization for special characters
-
-docs: update README with new configuration options
-
-refactor: extract API client to separate module
-
-test: add coverage for error handling
+feat: add Medium provider support
+fix: handle empty API responses
+docs: update installation guide
+feat(providers): add Hashnode integration
+feat!: change config format to YAML
 ```
 
-### Subject Rules
+**Breaking Changes:**
 
-- Use imperative mood ("add" not "adds" or "added")
-- Don't capitalize first letter
-- No period at the end
-- Limit to 50 characters
+```bash
+# Using ! after type
+git commit -m "feat!: change provider interface"
 
-### Body Rules
+# Using BREAKING CHANGE in footer
+git commit -m "feat: update API
 
-- Use imperative mood
-- Explain what and why, not how
-- Wrap at 72 characters
-
-### Breaking Changes
-
-Add `BREAKING CHANGE:` in the footer with description:
-
-```
-feat: change default content directory
-
-BREAKING CHANGE: Default content directory changed from 'posts/' to 'content/'
+BREAKING CHANGE: sync() now returns Promise"
 ```
 
-## Pull Request Process
+Commits are validated by a pre-commit hook. Invalid commits will be rejected with helpful error messages.
 
-1. Update documentation for any new features
-2. Add tests for new functionality
-3. Ensure all tests pass
-4. Update CHANGELOG.md if needed (or let automation handle it)
-5. Request review from maintainers
+## Pull Requests
+
+1. Write tests for new features
+2. Ensure all tests pass
+3. Follow existing code patterns
+4. Keep changes focused
 
 ## Code Style
 
-- Use 2 spaces for indentation
-- Follow existing patterns in the codebase
-- Keep functions focused and small
-- Add comments only when necessary
-- Use descriptive variable names
+- 2 spaces indentation
+- Descriptive variable names
+- Minimal comments
+- Small, focused functions
 
 ## Testing
 
-- Write tests for new features
-- Maintain or improve code coverage
-- Run `npm test` before committing
-- Run `npm run test:coverage` to check coverage
+Run tests before committing:
+
+```bash
+npm test              # Run all tests
+npm test:coverage     # Check coverage
+```
 
 ## Release Process
 
-Releases are automated. Maintainers will:
+Releases are automated via semantic-release. Your commit messages determine version bumps:
 
-1. Run version bump workflow
-2. Review and merge the PR
-3. Create and push version tag
-4. Monitor automated release
+- `fix:` → Patch (1.0.0 → 1.0.1)
+- `feat:` → Minor (1.0.0 → 1.1.0)
+- `feat!:` → Major (1.0.0 → 2.0.0)
 
-## Questions?
+Never manually bump versions. Push to `develop` branch triggers automatic release if needed.
 
-Open an issue for questions or clarification about contributing.
+## Questions
+
+Open an issue for clarification.

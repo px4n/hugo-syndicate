@@ -1,0 +1,54 @@
+# Test files and directories
+test/
+*.test.js
+*.spec.js
+jest.config.js
+coverage/
+.nyc_output/
+
+# Development and setup files
+install.sh
+scripts/
+.husky/
+.commitlintrc.json
+.releaserc.json
+COMMIT_CONVENTIONS.md
+
+# Documentation (semantic-release will handle CHANGELOG.md)
+docs/
+CONTRIBUTING.md
+
+# Example files
+examples/
+
+# CI/CD
+.github/
+.semantic-release-version.txt
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
