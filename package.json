@@ -1,6 +1,6 @@
 {
   "name": "hugo-syndicate",
-  "version": "0.1.0-alpha",
+  "version": "1.0.0",
   "description": "Multi-provider content syndication tool for Hugo static sites. Currently supports dev.to and Qiita with extensible architecture for more providers. Works with Hugo source files, not published sites.",
   "main": "hugo-syndicate.js",
   "bin": {
