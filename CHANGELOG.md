@@ -5,9 +5,13 @@ All notable changes to Hugo Syndicate will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0-alpha] - 2025-07-07
+<!-- Semantic-release will auto-generate entries above this line -->
 
-### Added
+## Pre-release History
+
+### [0.1.0-alpha] - 2025-07-07
+
+#### Added
 
 - Initial release of Hugo Syndicate
 - Full API integration for dev.to and Qiita with create/update/delete operations
@@ -25,20 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-language URL support
 - Hugo permalink pattern support
 
-### Features
+#### Features
 
 - Environment-based configuration
 - Simple error handling and recovery
 - File permission validation
 - Automatic retry on failures
 
-### Technical
+#### Technical
 
 - Node.js 16+ compatibility
 - Zero runtime dependencies (only build-time)
 - NPM package ready
 
-### Alpha Notice
+#### Alpha Notice
 
 This is an alpha release. While functional, it may contain bugs and the API may change in future versions. Use in production at your own risk.
 
