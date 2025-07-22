@@ -222,10 +222,12 @@ Content`;
   describe("getChangedFiles", () => {
     let getChangedFiles;
     let fs;
+    let path;
 
     beforeEach(() => {
       jest.resetModules();
       fs = require("fs");
+      path = require("path");
       jest.spyOn(fs, "existsSync");
       jest.spyOn(fs, "readdirSync");
       jest.spyOn(fs, "statSync");
@@ -240,19 +242,27 @@ Content`;
     test("returns all files when forceAll is true", async () => {
       fs.existsSync.mockReturnValue(true);
       fs.readdirSync.mockImplementation((dir) => {
-        if (dir === "content/") return ["blog"];
-        if (dir === "content/blog") return ["post1.md", "post2.md", "image.png"];
+        // Normalize the directory path for comparison
+        const normalizedDir = dir.replace(/\\/g, '/');
+        if (normalizedDir === "content/" || normalizedDir === "content") return ["blog"];
+        if (normalizedDir === "content/blog") return ["post1.md", "post2.md", "image.png"];
         return [];
       });
-      fs.statSync.mockImplementation((path) => ({
-        isDirectory: () => path.includes("blog") && !path.includes(".md"),
-      }));
+      fs.statSync.mockImplementation((filepath) => {
+        // Normalize the file path for comparison
+        const normalizedPath = filepath.replace(/\\/g, '/');
+        return {
+          isDirectory: () => normalizedPath.includes("blog") && !normalizedPath.includes(".md"),
+        };
+      });
 
       const files = await getChangedFiles(true);
 
       expect(files).toHaveLength(2);
-      expect(files).toContain("content/blog/post1.md");
-      expect(files).toContain("content/blog/post2.md");
+      // Normalize paths for cross-platform compatibility
+      const normalizedFiles = files.map(f => f.replace(/\\/g, '/'));
+      expect(normalizedFiles).toContain("content/blog/post1.md");
+      expect(normalizedFiles).toContain("content/blog/post2.md");
     });
 
     test("uses git diff when forceAll is false", async () => {
