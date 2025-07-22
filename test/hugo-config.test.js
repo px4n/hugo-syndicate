@@ -2,12 +2,10 @@ const fs = require("fs");
 const path = require("path");
 const TOML = require("@iarna/toml");
 
-// Mock environment variables for testing
-process.env.DEBUG_LEVEL = "0"; // Only errors during tests
+process.env.DEBUG_LEVEL = "0";
 process.env.HUGO_BASE_URL = "https://example.com";
 process.env.CONTENT_DIR = "content/";
 
-// Mock Hugo config for testing
 const createMockHugoConfig = (permalinks = {}) => ({
   baseURL: "https://example.com/",
   defaultContentLanguage: "en",
@@ -29,22 +27,18 @@ const createMockHugoConfig = (permalinks = {}) => ({
   },
 });
 
-// Simulate the loadHugoConfig function
 function mockLoadHugoConfig(config = null) {
   if (config) {
     return config;
   }
 
-  // Default fallback
   return { permalinks: {} };
 }
 
-// Simulate the generateCanonicalUrl function
 function mockGenerateCanonicalUrl(filePath, frontMatter, config = null) {
   const baseUrl = process.env.HUGO_BASE_URL || "https://yoursite.com";
   const hugoConfig = config || mockLoadHugoConfig();
 
-  // Extract relative path from configurable content directory
   const contentDir = process.env.CONTENT_DIR || "content/";
   const relativePath = filePath.replace(new RegExp(`^${contentDir}`), "");
 

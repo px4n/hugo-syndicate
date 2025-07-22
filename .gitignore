@@ -252,12 +252,7 @@ tags
 [._]*.un~
 
 ### VisualStudioCode ###
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+.vscode/
 
 # Local History for Visual Studio Code
 .history/
@@ -297,3 +292,12 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,linux,windows,go,node,vim,hugo
+
+# Project-specific ignores
+.actrc
+.gitmessage
+.semantic-release-version.txt
+.vscode
+
+# Husky - don't ignore
+!.husky/

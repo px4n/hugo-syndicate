@@ -1,0 +1,28 @@
+name: Sync to Providers
+
+on:
+  push:
+    branches: [main]
+    paths: ["content/**/*.md"]
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install -g hugo-syndicate
+
+      - name: Sync to providers
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          QIITA_ACCESS_TOKEN: ${{ secrets.QIITA_ACCESS_TOKEN }}
+          HUGO_BASE_URL: ${{ vars.HUGO_BASE_URL }}
+        run: hugo-syndicate

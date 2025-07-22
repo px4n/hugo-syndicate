@@ -5,23 +5,22 @@ All notable changes to Hugo Syndicate will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0-alpha.1] - 2025-07-07
+## [0.1.0-alpha] - 2025-07-07
 
 ### Added
 
 - Initial release of Hugo Syndicate
-- Completed dev.to API integration with create/update/delete operations
-- Smart sync control with `devto = true` frontmatter flag
-- Hugo shortcode transformation to dev.to liquid tags
+- Full API integration for dev.to and Qiita with create/update/delete operations
+- Sync control with `devto = true` and `qiita = true` frontmatter flags
+- Hugo shortcode transformation to provider-specific formats (liquid tags for dev.to, markdown for Qiita)
 - Automatic canonical URL generation based on Hugo site structure
 - Orphaned article cleanup detection
-- Comprehensive logging with multiple debug levels
+- Logging with debug levels
 - Support for both YAML and TOML front matter
-- Git-based change detection for efficient syncing
+- Git-based change detection
 - Force sync mode for processing all posts
-- Tag sanitization for dev.to compatibility (max 4 tags)
-- CLI support with global installation
-- Comprehensive test suite (28 tests)
+- Tag sanitization for provider compatibility (max 4 tags for dev.to, max 5 for Qiita)
+- CLI support
 - GitHub Actions workflow examples
 - Multi-language URL support
 - Hugo permalink pattern support
@@ -29,14 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Features
 
 - Environment-based configuration
-- Robust error handling and recovery
-- File permissions validation
+- Simple error handling and recovery
+- File permission validation
 - Automatic retry on failures
-- Progress tracking and reporting
 
 ### Technical
 
-- Node.js 14+ compatibility
+- Node.js 16+ compatibility
 - Zero runtime dependencies (only build-time)
 - NPM package ready
 
@@ -44,4 +42,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This is an alpha release. While functional, it may contain bugs and the API may change in future versions. Use in production at your own risk.
 
-[0.1.0-alpha.1]: https://github.com/px4n/hugo-syndicate/releases/tag/v0.1.0-alpha.1
+[0.1.0-alpha]: https://github.com/px4n/hugo-syndicate/releases/tag/v0.1.0-alpha

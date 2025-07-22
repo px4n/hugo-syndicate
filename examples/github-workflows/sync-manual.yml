@@ -1,0 +1,32 @@
+name: Manual Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force sync all posts"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install -g hugo-syndicate
+
+      - name: Sync to providers
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+          QIITA_ACCESS_TOKEN: ${{ secrets.QIITA_ACCESS_TOKEN }}
+          HUGO_BASE_URL: ${{ vars.HUGO_BASE_URL }}
+          FORCE_SYNC_ALL: ${{ github.event.inputs.force }}
+        run: hugo-syndicate

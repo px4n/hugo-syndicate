@@ -7,8 +7,8 @@ tags = ["hugo", "devto", "automation", "blogging"]
 categories = ["dev.to", "tutorials"]
 series = [""]
 disableComments = false
-date = "2025-01-01T10:00:00Z"
-lastMod = "2025-01-01T10:00:00Z"
+date = "2025-07-01T10:00:00Z"
+lastMod = "2025-07-01T10:00:00Z"
 devto = true
 draft = false
 +++
@@ -33,21 +33,26 @@ To sync a post to dev.to, you need to include `devto = true` in your front matte
 Hugo Syndicate automatically transforms Hugo shortcodes to dev.to compatible format:
 
 ### Image Example
+
 {{< image src="/img/example.jpg" alt="Example image" >}}
 
 ### Code Example
+
 {{< code language="javascript" title="Hello World Example" >}}
 console.log("Hello, World!");
 const greeting = "Welcome to our blog!";
 {{< /code >}}
 
 ### YouTube Example
+
 {{< youtube dQw4w9WgXcQ >}}
 
 ### Twitter Example
+
 {{< twitter 1234567890 >}}
 
 ### Gist Example
+
 {{< gist username abc123def456 >}}
 
 ## Regular Markdown
@@ -65,7 +70,7 @@ function example() {
 
 - Bullet points work normally
 - **Bold text** is preserved
-- *Italic text* is preserved
+- _Italic text_ is preserved
 - [Links](https://example.com) work as expected
 
 1. Numbered lists

@@ -9,11 +9,11 @@
       "login": "px4n",
       "type": "User"
     },
-    "default_branch": "main"
+    "default_branch": "develop"
   },
   "pusher": {
     "name": "px4n",
-    "email": "test@example.com"
+    "email": "hello@px4n.com"
   },
   "sender": {
     "login": "px4n",
@@ -31,7 +31,7 @@
       "timestamp": "2025-01-04T10:00:00Z",
       "author": {
         "name": "Test User",
-        "email": "test@example.com"
+        "email": "hello@test.com"
       }
     }
   ],
@@ -41,7 +41,7 @@
     "timestamp": "2025-01-04T10:00:00Z",
     "author": {
       "name": "Test User",
-      "email": "test@example.com"
+      "email": "hello@test.com"
     }
   }
 }
